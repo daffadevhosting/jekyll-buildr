@@ -3,8 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/hooks/use-auth';
-// Pastikan forceCloneAndSaveWorkspace diimpor
-import { getWorkspaces, setActiveWorkspace, deleteWorkspace, createWorkspace, getSettings, saveSettings, forceCloneAndSaveWorkspace } from '@/actions/content';
+import { getWorkspaces, setActiveWorkspaceAndSyncSettings, deleteWorkspace, createWorkspace, getSettings, saveSettings } from '@/actions/content';
 import { LoadingScreen } from '@/components/app/LoadingScreen';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -46,6 +45,7 @@ export default function DashboardPage() {
   const [branches, setBranches] = useState<string[]>([]);
   const [isFetchingRepos, setIsFetchingRepos] = useState(false);
   const [isFetchingBranches, setIsFetchingBranches] = useState(false);
+  const [openingId, setOpeningId] = useState<string | null>(null);
 
   const fetchRepos = async () => {
       setIsFetchingRepos(true);
@@ -123,15 +123,24 @@ export default function DashboardPage() {
   }, [user, authLoading, router, toast]);
 
   // --- FUNGSI UTAMA YANG DIPERBAIKI ---
-  const handleWorkspaceClick = async (workspace: Workspace | null) => {
-    if (!workspace || !workspace.id) {
-        toast({ title: "Error", description: "Invalid workspace data.", variant: "destructive" });
-        return;
-    }
-    // Tugasnya sekarang hanya 2: set aktif, lalu navigasi.
-    await setActiveWorkspace(workspace.id);
-    router.push('/workspace');
-  };
+    const handleWorkspaceClick = async (workspace: Workspace | null) => {
+        if (!workspace || !workspace.id) {
+            toast({ title: "Error", description: "Invalid workspace data.", variant: "destructive" });
+            return;
+        }
+        setOpeningId(workspace.id); // Mulai loading
+        toast({ title: "Opening Workspace...", description: "Syncing your settings..." });
+
+        // Panggil fungsi sinkronisasi yang baru
+        const result = await setActiveWorkspaceAndSyncSettings(workspace);
+
+        if (result.success) {
+            router.push('/workspace');
+        } else {
+            toast({ title: "Failed to Open Workspace", description: result.error, variant: 'destructive' });
+            setOpeningId(null); // Hentikan loading jika gagal
+        }
+    };
 
   const onRepoSelectInDialog = async (repoFullName: string) => {
       setSelectedRepo(repoFullName);
@@ -254,7 +263,12 @@ export default function DashboardPage() {
           {user?.role === 'proUser' && (
             <>
               {workspaces.map(ws => (
-                <Card key={ws.id} className={cn("relative h-[202px] flex flex-grow flex-col cursor-pointer p-4 hover:border-primary transition-all")}>
+                <Card key={ws.id} className={cn("relative h-[202px] flex flex-grow flex-col cursor-pointer p-4 hover:border-primary transition-all", openingId === ws.id && "opacity-50 pointer-events-none")}>
+                            {openingId === ws.id && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-lg z-10">
+                                    <Loader2 className="h-8 w-8 animate-spin" />
+                                </div>
+                            )}
                    <div onClick={() => handleWorkspaceClick(ws)}>
                     <CardHeader className="flex flex-row items-start justify-between">
                       <div>
@@ -368,7 +382,12 @@ export default function DashboardPage() {
           {user?.role !== 'proUser' && (
             <>
               {freeUserWorkspace && (
-                <Card key={freeUserWorkspace.id} className={cn("cursor-pointer h-[202px] flex flex-grow flex-col p-4 hover:border-primary transition-all relative")} onClick={() => handleWorkspaceClick(freeUserWorkspace)}>
+                <Card key={freeUserWorkspace.id} className={cn("cursor-pointer h-[202px] flex flex-grow flex-col p-4 hover:border-primary transition-all relative", openingId === freeUserWorkspace.id && "opacity-50 pointer-events-none")} onClick={() => handleWorkspaceClick(freeUserWorkspace)}>
+                            {openingId === freeUserWorkspace.id && (
+                                <div className="absolute inset-0 flex items-center justify-center bg-background/80 rounded-lg z-10">
+                                    <Loader2 className="h-8 w-8 animate-spin" />
+                                </div>
+                            )}
                   <CardHeader>
                     <CardTitle>{freeUserWorkspace.name}</CardTitle>
                     <CardDescription>Repo: {freeUserWorkspace.githubRepo}</CardDescription>

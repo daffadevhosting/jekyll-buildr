@@ -350,6 +350,7 @@ function HomePageContent() {
   const [content, setContent] = React.useState('');
   const [syncedFileState, setSyncedFileState] = React.useState<{[path: string]: string}>({});
   const [showPublishConfirm, setShowPublishConfirm] = React.useState(false);
+  const [workspaceName, setWorkspaceName] = React.useState<string | null>(null);
 
 
   React.useEffect(() => {
@@ -397,8 +398,10 @@ function HomePageContent() {
                 setLoadingState('cloning');
                 const cloneResult = await cloneRepository();
                 if (cloneResult.success && cloneResult.fileStructure && cloneResult.fileContents) {
+                    const repoName = settingsData?.githubRepo?.split('/')[1] || 'Cloned Workspace';
+                    setWorkspaceName(repoName);
                     const clonedState = {
-                        name: settingsData?.githubRepo?.split('/')[1] || 'Cloned Workspace',
+                        name: repoName,
                         githubRepo: settingsData?.githubRepo,
                         githubBranch: settingsData?.githubBranch,
                         fileStructure: cloneResult.fileStructure,
@@ -420,7 +423,7 @@ function HomePageContent() {
             }
         } else {
             // ATURAN #2: Jika TIDAK ADA koneksi GitHub, barulah kita urus default workspace.
-            setActiveWorkspaceId('default');
+            setWorkspaceName('Default Project');
             const workspaceDataResult = await getWorkspaceState('default');
              if (workspaceDataResult.success && workspaceDataResult.data?.fileStructure) {
                 const { data } = workspaceDataResult;
@@ -1199,7 +1202,8 @@ function HomePageContent() {
   return (
     <TooltipProvider>
       <div className="flex h-screen w-full flex-col">
-        <AppHeader onNewPost={() => setIsPostEditorOpen(true)}
+        <AppHeader
+          workspaceName={workspaceName} onNewPost={() => setIsPostEditorOpen(true)}
             onUpgradeClick={() => setUpgradeModalOpen(true)}>
           {isMobile && (
             <Sheet open={isSheetOpen} onOpenChange={setIsSheetOpen}>

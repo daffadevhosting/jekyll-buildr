@@ -995,3 +995,32 @@ export async function setActiveWorkspace(workspaceId: string) {
     await settingsRef.set({ activeWorkspaceId: workspaceId }, { merge: true });
     return { success: true };
 }
+
+// --- FUNGSI BARU UNTUK SINKRONISASI TOTAL ---
+export async function setActiveWorkspaceAndSyncSettings(workspace: {id: string, githubRepo?: string, githubBranch?: string}) {
+    try {
+        const userId = await getUserId();
+        if (!adminDb) {
+            throw new Error('Firestore not initialized');
+        }
+        const settingsRef = adminDb.collection('users').doc(userId).collection('settings').doc('github');
+        
+        const settingsUpdate: {
+            activeWorkspaceId: string;
+            githubRepo?: string;
+            githubBranch?: string;
+        } = {
+            activeWorkspaceId: workspace.id,
+            // Hanya perbarui repo dan branch jika ada, jika tidak (seperti default), biarkan
+            ...(workspace.githubRepo && { githubRepo: workspace.githubRepo }),
+            ...(workspace.githubBranch && { githubBranch: workspace.githubBranch }),
+        };
+
+        await settingsRef.set(settingsUpdate, { merge: true });
+        return { success: true };
+
+    } catch (error: any) {
+        console.error("Error syncing active workspace:", error);
+        return { success: false, error: error.message };
+    }
+}

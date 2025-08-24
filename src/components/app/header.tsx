@@ -33,9 +33,10 @@ type AppHeaderProps = {
   children?: React.ReactNode;
   onNewPost?: () => void;
   onUpgradeClick?: () => void;
+  workspaceName?: string | null;
 };
 
-export function AppHeader({ children, onNewPost, onUpgradeClick }: AppHeaderProps) {
+export function AppHeader({ children, onNewPost, onUpgradeClick, workspaceName }: AppHeaderProps) {
   const { user, logout } = useAuth();
   const router = useRouter();
 
@@ -51,7 +52,13 @@ export function AppHeader({ children, onNewPost, onUpgradeClick }: AppHeaderProp
         {children}
         <Link className="flex gap-1 items-center" href="/workspace" >
         <Icons.logo className="h-6 w-6" />
-        <h1 className="font-headline text-xl font-bold">Jekyll Buildr</h1>
+        <h2 className="font-headline text-xl font-bold">Jekyll Buildr</h2>
+                {workspaceName && (
+                    <>
+                        <span className="text-muted-foreground text-lg">/</span>
+                        <span className="font-mono text-sm text-muted-foreground truncate max-w-[150px] sm:max-w-[300px]">{workspaceName}</span>
+                    </>
+                )}
         </Link>
       </div>
       <div className="flex items-center gap-2">
