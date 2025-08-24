@@ -1,3 +1,4 @@
+// src/actions/user.ts - Updated functions to support both auth methods
 
 'use server';
 
@@ -5,6 +6,21 @@ import { adminDb, adminAuth } from '@/lib/firebase-admin';
 import { cookies } from 'next/headers';
 import { getUserId } from '@/lib/auth-utils';
 import { FieldValue } from 'firebase-admin/firestore';
+
+// Helper function to get user ID from either session cookie or Authorization header
+async function getUserIdFromRequest(userIdOverride?: string): Promise<string> {
+    if (userIdOverride) {
+        return userIdOverride;
+    }
+    
+    // Try to get from session cookie first (web app)
+    try {
+        return await getUserId();
+    } catch (cookieError) {
+        console.log('[AUTH] Session cookie not found, this might be from VS Code extension');
+        throw new Error('Not authenticated. Please provide userId parameter for API calls.');
+    }
+}
 
 // Tindakan ini menginisialisasi pengguna baru di Firestore.
 export async function initializeUser(userData: { uid: string, githubId: string, email?: string | null, displayName?: string | null, photoURL?: string | null }) {
@@ -36,7 +52,6 @@ export async function initializeUser(userData: { uid: string, githubId: string, 
         return { success: false, error: error.message || "Failed to initialize user." };
     }
 }
-
 
 // Tindakan ini dipanggil dari klien untuk mengatur cookie sesi
 export async function createSessionCookie(idToken: string) {
@@ -91,7 +106,6 @@ export async function signOutUser() {
     return { success: true }; // Selalu kembalikan keberhasilan karena cookie sudah dihapus.
 }
 
-
 /**
  * Meningkatkan pengguna ke peran 'proUser'. 
  * Fungsi ini dirancang untuk dipanggil dari lingkungan server yang aman (seperti penangan webhook)
@@ -123,15 +137,14 @@ export async function upgradeToPro(userId: string, subscriptionId: string, payer
     }
 }
 
-
 /**
  * Memeriksa apakah pengguna diizinkan untuk menghasilkan komponen AI.
  * Pengguna gratis dibatasi hingga 1 kali per 24 jam.
  * Jika diizinkan, itu juga mencatat stempel waktu generasi.
  */
-export async function checkAndRecordComponentGeneration() {
+export async function checkAndRecordComponentGeneration(userIdOverride?: string) {
     try {
-        const userId = await getUserId();
+        const userId = await getUserIdFromRequest(userIdOverride);
         if (!adminDb) throw new Error('Firestore not initialized');
 
         const userRef = adminDb.collection('users').doc(userId);
@@ -185,11 +198,9 @@ export async function checkAndRecordComponentGeneration() {
  * If allowed, it also records the generation timestamp.
  * ACCEPTS an optional userId to bypass cookie-based auth for API calls.
  */
-export async function checkAndRecordPostGeneration(userIdOverride?: string) { // <-- Menerima argumen opsional
+export async function checkAndRecordPostGeneration(userIdOverride?: string) {
     try {
-        // Jika userId diberikan (dari API route), gunakan itu.
-        // Jika tidak, dapatkan dari cookie sesi (untuk panggilan dari web app).
-        const userId = userIdOverride || await getUserId(); // <-- Logika baru
+        const userId = await getUserIdFromRequest(userIdOverride);
         if (!adminDb) throw new Error('Firestore not initialized');
 
         const userRef = adminDb.collection('users').doc(userId);
@@ -241,10 +252,11 @@ export async function checkAndRecordPostGeneration(userIdOverride?: string) { //
  * Checks if a user is allowed to generate an AI image.
  * Free users are limited to 1 generation per 24 hours.
  * If allowed, it also records the generation timestamp.
+ * UPDATED: Now supports both session cookie and userId parameter for VS Code extension
  */
-export async function checkAndRecordImageGeneration(userId: string) {
+export async function checkAndRecordImageGeneration(userIdOverride?: string) {
     try {
-        const userId = await getUserId();
+        const userId = await getUserIdFromRequest(userIdOverride);
         if (!adminDb) throw new Error('Firestore not initialized');
 
         const userRef = adminDb.collection('users').doc(userId);
