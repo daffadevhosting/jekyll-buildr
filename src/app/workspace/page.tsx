@@ -348,6 +348,8 @@ function HomePageContent() {
   const [activeWorkspaceId, setActiveWorkspaceId] = React.useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = React.useState<Set<string>>(new Set());
   const [content, setContent] = React.useState('');
+  const [syncedFileState, setSyncedFileState] = React.useState<{[path: string]: string}>({});
+  const [showPublishConfirm, setShowPublishConfirm] = React.useState(false);
 
 
   React.useEffect(() => {
@@ -389,6 +391,7 @@ function HomePageContent() {
                 setFileContents(data.fileContents);
                 setExpandedFolders(new Set(data.expandedFolders || []));
                 setContent(data.fileContents[data.activeFile] ?? '');
+                setSyncedFileState(data.syncedFileState || {});
             } else {
                 // Tidak ada di Firestore (pertama kali buka), lakukan clone.
                 setLoadingState('cloning');
@@ -402,6 +405,7 @@ function HomePageContent() {
                         activeFile: 'index.html',
                         fileContents: cloneResult.fileContents,
                         expandedFolders: Array.from(new Set(['_layouts', '_includes', '_posts', '_data', 'assets', 'assets/css', 'assets/images', 'assets/js'])),
+                        syncedFileState: cloneResult.syncedFileState,
                     };
                     await saveWorkspaceState(workspaceIdToLoad, clonedState);
                     setFileStructure(clonedState.fileStructure);
@@ -991,6 +995,9 @@ function HomePageContent() {
   };
 
   const handlePublish = async () => {
+    // Sembunyikan dialog dulu
+    setShowPublishConfirm(false);
+
     setIsPublishing(true);
     toast({
       title: 'Publishing to GitHub...',
@@ -999,33 +1006,21 @@ function HomePageContent() {
 
     try {
       const settingsResult = await getSettings();
-      if (
-        !settingsResult.success ||
-        !settingsResult.data?.githubRepo ||
-        !settingsResult.data?.githubBranch
-      ) {
-        throw new Error(
-          'GitHub repository details are incomplete. Please check your settings.'
-        );
+      if (!settingsResult.success || !settingsResult.data) {
+        throw new Error(settingsResult.error || 'Could not retrieve user settings.');
       }
 
-      const filesToCommit = collectFilesToCommit();
-      if (filesToCommit.length === 0) {
-        toast({
-          title: 'Nothing to Publish',
-          description: 'No file changes were found to publish.',
-        });
-        setIsPublishing(false);
-        return;
-      }
-
-      const result = await publishTemplateFiles(filesToCommit);
+      const result = await publishTemplateFiles(fileStructure, fileContents, syncedFileState);
 
       if (result.success) {
         toast({
           title: 'Publish Successful!',
           description: 'Your changes have been pushed to your GitHub repository.',
         });
+        const updatedState = await cloneRepository();
+        if (updatedState.success) {
+          setSyncedFileState(updatedState.syncedFileState || {});
+        }
       } else {
         throw new Error(result.error || 'An unknown error occurred.');
       }
@@ -1336,11 +1331,28 @@ function HomePageContent() {
           </section>
         </main>
         <AppFooter
-          onPublish={handlePublish}
+          onPublish={() => setShowPublishConfirm(true)}
           isPublishing={isPublishing}
           onPullRequest={handlePullRequest}
           isCreatingPr={isCreatingPr}
         />
+        {/* --- DIALOG KONFIRMASI --- */}
+        <AlertDialog open={showPublishConfirm} onOpenChange={setShowPublishConfirm}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Konfirmasi Publikasi</AlertDialogTitle>
+                    <AlertDialogDescription>
+                        Proses ini akan melakukan commit pada semua file teks (HTML, CSS, MD, dll.) dan menghapus file yang tidak ada lagi di workspace.
+                        <br/><br/>
+                        <strong className="text-foreground">Penting:</strong> File gambar (.png, .jpg, dll.) yang diunggah melalui File Explorer tidak akan di-publish. Untuk menambahkan gambar, silakan gunakan fitur "Create New Post".
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel>Batal</AlertDialogCancel>
+                    <AlertDialogAction onClick={handlePublish}>Lanjut & Push</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
         <AlertDialog
           open={!!deletingPath}
           onOpenChange={(open) => !open && setDeletingPath(null)}

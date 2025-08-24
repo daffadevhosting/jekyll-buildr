@@ -4,10 +4,11 @@
 import { adminDb } from '@/lib/firebase-admin';
 import { getUserId } from '@/lib/auth-utils';
 import { FieldValue } from 'firebase-admin/firestore';
-import { commitFileToRepo, createBranch, createPullRequest, getBranchSha, getRepoTree, getFileContent, ensureDirExists } from '@/lib/github';
+import { commitFileToRepo, createBranch, createPullRequest, getBranchSha, getRepoTree, getFileContent, ensureDirExists, deleteFileFromRepo } from '@/lib/github';
 import { revalidatePath } from 'next/cache';
 import sharp from 'sharp';
 import { FileNode } from '@/types';
+import ignore from 'ignore';
 
 // Bantuan untuk mendapatkan referensi ke dokumen pengguna untuk konten
 function getUserContentDoc(
@@ -33,6 +34,56 @@ function getTemplateStateDoc(userId: string) {
  throw new Error('Firestore not initialized');
  }
     return adminDb.collection('users').doc(userId).collection('settings').doc('templateState');
+}
+
+// --- FUNGSI CLONE DAN CREATE WORKSPACE DIPERBARUI ---
+// Kita akan memodifikasi fungsi-fungsi ini untuk menyimpan state file dari Git
+async function cloneAndStructureRepo(repoFullName: string, branch: string, installationId: string) {
+    const treeItems = await getRepoTree(repoFullName, branch, installationId);
+    const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+
+    const fileContents: { [key: string]: string } = {};
+    const fileStructure: FileNode[] = [];
+    const structureMap: { [key: string]: FileNode } = {};
+    const syncedFileState: { [path: string]: string } = {};
+
+    for (const item of treeItems) {
+        const isImage = imageExtensions.some(ext => item.path.toLowerCase().endsWith(ext));
+
+        // Skip images entirely so clone does not include them in structure/contents/state
+        if (isImage) continue;
+
+        // Kita tetap membangun struktur file untuk semua item (kecuali gambar)
+        const pathParts = item.path.split('/');
+        let currentLevel = fileStructure;
+        for (let i = 0; i < pathParts.length; i++) {
+            const part = pathParts[i];
+            const currentPath = pathParts.slice(0, i + 1).join('/');
+            let node = structureMap[currentPath];
+            if (!node) {
+                node = {
+                    name: part,
+                    path: currentPath,
+                    type: (i === pathParts.length - 1 && item.type === 'blob') ? 'file' : 'folder',
+                };
+                if (node.type === 'folder') node.children = [];
+                structureMap[currentPath] = node;
+                currentLevel.push(node);
+            }
+            if (node.type === 'folder') currentLevel = node.children!;
+        }
+
+        // Hanya proses konten dan simpan SHA jika BUKAN gambar
+        if (item.type === 'blob') {
+            syncedFileState[item.path] = item.sha; 
+            const fileData = await getFileContent(repoFullName, item.sha, installationId);
+            if (fileData.encoding === 'base64') {
+                fileContents[item.path] = Buffer.from(fileData.content, 'base64').toString('utf-8');
+            }
+        }
+    }
+    
+    return { fileStructure, fileContents, syncedFileState };
 }
 
 /**
@@ -510,29 +561,38 @@ export async function deleteWorkspace(workspaceId: string) {
     }
 }
 
+// --- FUNGSI PUBLISH DIPERBARUI TOTAL ---
 /**
  * Menerbitkan sekumpulan file template ke repositori GitHub pengguna secara berurutan.
  * Sekarang dengan kompresi gambar otomatis untuk file di bawah batas ukuran GitHub.
 **/
-export async function publishTemplateFiles(files: any[]) {
+export async function publishTemplateFiles(files: any[], fileContents: {[path: string]: string}, syncedFileState: {[path: string]: string}) {
     try {
         const settingsResult = await getSettings();
         if (!settingsResult.success || !settingsResult.data) {
              throw new Error(settingsResult.error || 'Could not retrieve user settings.');
         }
         const settings = settingsResult.data;
-
-        if (!settings?.githubUsername || !settings?.githubRepo || !settings?.githubBranch || !settings?.installationId) {
-            throw new Error('GitHub repository details are incomplete. Please check your settings.');
+        if (!settings?.githubRepo || !settings?.githubBranch || !settings?.installationId) {
+            throw new Error('GitHub repository details are incomplete.');
+        }
+        
+        const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+        const ig = ignore();
+        if (fileContents['.gitignore']) {
+            ig.add(fileContents['.gitignore']);
         }
 
+        const currentFilePaths = new Set<string>();
         const filesToCommit: any[] = [];
-        const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp'];
-        const GITHUB_FILE_SIZE_LIMIT_BYTES = 800 * 1024; // Batas aman 800KB
-
-        // Fungsi bantuan untuk meratakan pohon file
+        
         const collectFiles = (items: any[]) => {
             for (const item of items) {
+                // Pastikan gambar tidak pernah masuk ke daftar commit
+                const isImage = imageExtensions.some(ext => item.path.toLowerCase().endsWith(ext));
+                if(isImage) continue;
+
+                currentFilePaths.add(item.path);
                 if (item.type === 'file') {
                     filesToCommit.push(item);
                 } else if (item.type === 'folder' && item.children) {
@@ -546,37 +606,38 @@ export async function publishTemplateFiles(files: any[]) {
         };
         collectFiles(files);
 
-        // Proses file secara berurutan
-        for (const file of filesToCommit) {
-            let contentToCommit = file.content;
+        // 1. Tentukan file yang akan dihapus (skip gambar)
+        const filesToDelete = Object.entries(syncedFileState)
+            .filter(([path]) => !currentFilePaths.has(path))
+            .filter(([path]) => !ig.ignores(path))
+            .filter(([path]) => !imageExtensions.some(ext => path.toLowerCase().endsWith(ext))); // <-- jangan hapus gambar
+
+        for (const [path, sha] of filesToDelete) {
+            await deleteFileFromRepo({
+                repoFullName: settings.githubRepo,
+                installationId: settings.installationId,
+                path: path,
+                commitMessage: `buildr: delete ${path}`,
+                branch: settings.githubBranch,
+                sha: sha,
+            });
+        }
+        
+        // 2. Tentukan file yang akan ditambah/diubah
+        const finalFilesToCommit = filesToCommit.filter(file => !ig.ignores(file.path));
+
+        for (const file of finalFilesToCommit) {
+            let contentToCommit = fileContents[file.path] ?? file.content;
             let isBase64 = false;
-
-            // Cek apakah file adalah gambar dan perlu dikompresi
-            const isImage = imageExtensions.some(ext => file.path.toLowerCase().endsWith(ext));
-            if (isImage && file.content.startsWith('data:image')) {
-                const base64Data = file.content.split(',')[1];
-                const imageBuffer = Buffer.from(base64Data, 'base64');
-
-                // Jika sudah di bawah batas, tidak perlu kompresi ulang
-                if (imageBuffer.length > GITHUB_FILE_SIZE_LIMIT_BYTES) {
-                    const processedImageBuffer = await sharp(imageBuffer)
-                        .resize({ width: 1024, height: 1024, fit: 'inside', withoutEnlargement: true }) // Resize jika terlalu besar
-                        .webp({ quality: 80 }) // Kompres ke WebP
-                        .toBuffer();
-
-                    // Cek lagi setelah kompresi
-                    if (processedImageBuffer.length > GITHUB_FILE_SIZE_LIMIT_BYTES) {
-                        throw new Error(`File '${file.name}' terlalu besar (> 800KB) bahkan setelah kompresi. Harap gunakan gambar yang lebih kecil.`);
-                    }
-                    contentToCommit = processedImageBuffer.toString('base64');
-                } else {
-                    contentToCommit = base64Data; // Gunakan data base64 yang sudah ada
-                }
+            if (contentToCommit && contentToCommit.startsWith('data:')) {
+                contentToCommit = contentToCommit.split(',')[1];
                 isBase64 = true;
-            } else if (file.content.startsWith('data:')) {
-                // Untuk file non-gambar (mis. SVG) yang berupa data URI
-                contentToCommit = file.content.split(',')[1];
-                isBase64 = true;
+            }
+
+            // Pastikan kita tidak mencoba mengirim konten 'undefined'
+            if (contentToCommit === undefined) {
+                console.warn(`Skipping commit for ${file.path} due to undefined content.`);
+                continue;
             }
 
             await commitFileToRepo({
@@ -590,12 +651,20 @@ export async function publishTemplateFiles(files: any[]) {
             });
         }
 
+        // 3. Update state baru di Firestore setelah publish
+        const { syncedFileState: newSyncedState } = await cloneAndStructureRepo(settings.githubRepo, settings.githubBranch, settings.installationId);
+        const userId = await getUserId();
+        if (!adminDb) {
+            throw new Error('Firestore not initialized');
+        }
+        const workspaceRef = adminDb.collection('users').doc(userId).collection('workspaces').doc(settings.activeWorkspaceId);
+        await workspaceRef.update({
+            syncedFileState: newSyncedState
+        });
+
         return { success: true };
     } catch (error: any) {
         console.error("Error publishing template files:", error);
-        if (error.message.includes('Session expired')) {
-             return { success: false, error: "Sesi Anda telah berakhir. Harap login kembali." };
-        }
         return { success: false, error: error.message };
     }
 }
@@ -690,70 +759,15 @@ export async function createPullRequestAction(files: any[], prDetails: { title: 
 export async function cloneRepository() {
     try {
         const settingsResult = await getSettings();
-        if (!settingsResult.success || !settingsResult.data) {
-            throw new Error(settingsResult.error || 'Could not retrieve user settings.');
-        }
         const settings = settingsResult.data;
         if (!settings?.githubRepo || !settings?.githubBranch || !settings?.installationId) {
-            throw new Error('GitHub repository details are incomplete. Please check your settings.');
+            throw new Error('GitHub repository details are incomplete.');
         }
 
-        const treeItems = await getRepoTree(settings.githubRepo, settings.githubBranch, settings.installationId);
-        const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
-
-        const fileContents: { [key: string]: string } = {};
-        const fileStructure: FileNode[] = [];
-
-        const structureMap: { [key: string]: FileNode } = {};
-
-        // Proses semua item dari tree file
-        for (const item of treeItems) {
-            // Cek apakah file adalah gambar berdasarkan ekstensinya
-            const isImage = imageExtensions.some(ext => item.path.toLowerCase().endsWith(ext));
-
-            // Jika ini gambar, lewati dan jangan proses lebih lanjut
-            if (isImage) {
-                continue;
-            }
-            // Kita hanya proses file (blob), bukan folder (tree) atau submodule
-            if (item.type === 'blob') {
-                const fileData = await getFileContent(settings.githubRepo, item.sha, settings.installationId);
-                
-                // Konten dari GitHub API dalam format base64, jadi perlu di-decode
-                if (fileData.encoding === 'base64') {
-                    fileContents[item.path] = Buffer.from(fileData.content, 'base64').toString('utf-8');
-                }
-            }
-
-            // Membangun struktur folder/file untuk file explorer
-            const pathParts = item.path.split('/');
-            let currentLevel = fileStructure;
-
-            for (let i = 0; i < pathParts.length; i++) {
-                const part = pathParts[i];
-                const currentPath = pathParts.slice(0, i + 1).join('/');
-
-                let node = structureMap[currentPath];
-
-                if (!node) {
-                    node = {
-                        name: part,
-                        path: currentPath,
-                        type: (i === pathParts.length - 1 && item.type === 'blob') ? 'file' : 'folder',
-                    };
-                    if (node.type === 'folder') node.children = [];
-                    
-                    structureMap[currentPath] = node;
-                    currentLevel.push(node);
-                }
-
-                if (node.type === 'folder') {
-                    currentLevel = node.children!;
-                }
-            }
-        }
+        const { fileStructure, fileContents, syncedFileState } = await cloneAndStructureRepo(settings.githubRepo, settings.githubBranch, settings.installationId);
         
-        return { success: true, fileStructure, fileContents };
+        // Saat clone, kita juga mengembalikan state file yang tersinkronisasi
+        return { success: true, fileStructure, fileContents, syncedFileState };
 
     } catch (error: any) {
         console.error("Error cloning repository:", error);
@@ -932,61 +946,21 @@ export async function createWorkspace(repoFullName: string, branch: string) {
         const userId = await getUserId();
         if (!adminDb) throw new Error('Firestore not initialized');
 
-        // 1. Validasi Peran Pengguna (Hanya untuk Pro)
         const userRef = adminDb.collection('users').doc(userId);
         const userSnap = await userRef.get();
         if (userSnap.data()?.role !== 'proUser') {
-            throw new Error('Hanya Pro User yang dapat membuat workspace baru.');
+            throw new Error('Only Pro Users can create new workspaces.');
         }
 
-        // 2. Ambil pengaturan untuk mendapatkan installationId yang SUDAH ADA
         const settingsResult = await getSettings();
         if (!settingsResult.success || !settingsResult.data?.installationId) {
-            throw new Error('Koneksi GitHub tidak ditemukan. Harap hubungkan akun Anda di pengaturan terlebih dahulu.');
+            throw new Error('GitHub connection not found.');
         }
         const installationId = settingsResult.data.installationId;
 
-        // 3. Logika Kloning (sekarang menggunakan installationId yang benar)
-        const treeItems = await getRepoTree(repoFullName, branch, installationId);
-        
-        const fileContents: { [key: string]: string } = {};
-        const fileStructure: any[] = [];
-        const structureMap: { [key: string]: any } = {};
-        const imageExtensions = ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg'];
+        // Gunakan fungsi helper untuk cloning
+        const { fileStructure, fileContents, syncedFileState } = await cloneAndStructureRepo(repoFullName, branch, installationId);
 
-        for (const item of treeItems) {
-            const isImage = imageExtensions.some(ext => item.path.toLowerCase().endsWith(ext));
-            if (isImage) continue;
-
-            if (item.type === 'blob') {
-                const fileData = await getFileContent(repoFullName, item.sha, installationId);
-                if (fileData.encoding === 'base64') {
-                    fileContents[item.path] = Buffer.from(fileData.content, 'base64').toString('utf-8');
-                }
-            }
-            
-            // Logika untuk membangun struktur file agar bisa tampil di explorer
-            const pathParts = item.path.split('/');
-            let currentLevel = fileStructure;
-            for (let i = 0; i < pathParts.length; i++) {
-                const part = pathParts[i];
-                const currentPath = pathParts.slice(0, i + 1).join('/');
-                let node = structureMap[currentPath];
-                if (!node) {
-                    node = {
-                        name: part,
-                        path: currentPath,
-                        type: (i === pathParts.length - 1 && item.type === 'blob') ? 'file' : 'folder',
-                    };
-                    if (node.type === 'folder') node.children = [];
-                    structureMap[currentPath] = node;
-                    currentLevel.push(node);
-                }
-                if (node.type === 'folder') currentLevel = node.children!;
-            }
-        }
-
-        // Buat dokumen baru di koleksi workspaces
         const newWorkspaceRef = adminDb.collection('users').doc(userId).collection('workspaces').doc();
         await newWorkspaceRef.set({
             name: repoFullName.split('/')[1] || 'New Workspace',
@@ -994,11 +968,11 @@ export async function createWorkspace(repoFullName: string, branch: string) {
             githubBranch: branch,
             fileStructure,
             fileContents,
+            syncedFileState, // Simpan state awal file
             activeFile: 'index.html',
             createdAt: FieldValue.serverTimestamp(),
         });
 
-        // 5. Atur workspace baru sebagai yang aktif
         await setActiveWorkspace(newWorkspaceRef.id);
 
         return { success: true, workspaceId: newWorkspaceRef.id };

@@ -1,4 +1,5 @@
 import * as jwt from 'jsonwebtoken';
+import ignore from 'ignore';
 
 // ID instalasi
 type AuthParams = {
@@ -305,4 +306,39 @@ export async function getFileContent(repoFullName: string, fileSha: string, inst
         installationId
     );
     return { content: data.content, encoding: data.encoding };
+}
+
+// --- FUNGSI BARU UNTUK MENGHAPUS FILE ---
+/**
+ * Deletes a file from a GitHub repository.
+ */
+export async function deleteFileFromRepo({
+    repoFullName,
+    installationId,
+    path,
+    commitMessage,
+    branch,
+    sha, // SHA dari file yang akan dihapus, ini wajib
+}: {
+    repoFullName: string;
+    installationId: string;
+    path: string;
+    commitMessage: string;
+    branch: string;
+    sha: string;
+}): Promise<void> {
+    try {
+        await githubApiRequest(`/repos/${repoFullName}/contents/${path}`, installationId, {
+            method: 'DELETE',
+            body: JSON.stringify({
+                message: commitMessage,
+                sha: sha,
+                branch: branch,
+            }),
+        });
+        console.log(`Successfully deleted '${path}' from ${repoFullName}`);
+    } catch (error) {
+        console.error(`Failed to delete '${path}' from GitHub:`, error);
+        throw error;
+    }
 }

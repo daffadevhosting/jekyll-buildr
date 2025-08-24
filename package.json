@@ -49,6 +49,7 @@
     "firebase-admin": "^12.4.0",
     "framer-motion": "^12.23.12",
     "genkit": "^1.14.1",
+    "ignore": "^7.0.5",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.475.0",
     "next": "15.3.3",
