@@ -118,13 +118,15 @@ export async function POST(request: NextRequest) {
                 
                 // Gunakan fungsi initializeUser dari user.ts untuk konsistensi
                 console.log('[VSCODE-LOGIN] Initializing user in Firestore...');
+                const role = 'freeUser'; // Default role for new users
                 const initResult = await initializeUser({
                     uid: uid,
                     githubId: githubId,
                     email: email,
                     displayName: displayName,
                     photoURL: photoURL,
-                });
+                    role: role,
+                    }, { merge: true }); // Gunakan merge untuk jaga data lama seperti 'role'
                 
                 if (!initResult.success) {
                     console.error('[VSCODE-LOGIN] Failed to initialize user:', initResult.error);

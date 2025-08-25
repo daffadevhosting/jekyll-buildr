@@ -23,7 +23,7 @@ async function getUserIdFromRequest(userIdOverride?: string): Promise<string> {
 }
 
 // Tindakan ini menginisialisasi pengguna baru di Firestore.
-export async function initializeUser(userData: { uid: string, githubId: string, email?: string | null, displayName?: string | null, photoURL?: string | null }) {
+export async function initializeUser(userData: { uid: string; githubId: string; email?: string | null; displayName?: string | null; photoURL?: string | null; role?: string; }, p0: { merge: boolean; }) {
     try {
         if (!adminDb) throw new Error('Firebase Admin not initialized');
         const { uid, email, displayName, githubId, photoURL } = userData;

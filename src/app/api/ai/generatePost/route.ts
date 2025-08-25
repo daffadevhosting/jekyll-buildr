@@ -60,7 +60,7 @@ title: "${title}"
 author: "${author || ''}"
 date: ${new Date().toISOString()}
 categories: ${categories || aiResult.categories}
-image: ""
+image: "https://placehold.co/600x400?text=No-Image"
 ---`;
 
         const fullContent = `${frontmatter}\n\n${aiResult.content}`;
