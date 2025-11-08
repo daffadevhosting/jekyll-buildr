@@ -2,66 +2,109 @@
 
 import { useSearchParams } from 'next/navigation';
 import { useEffect, useState, Suspense } from 'react';
-import { useAuth } from '@/hooks/use-auth'; // Assuming this hook exists and provides user and token
-import { Button } from '@/components/ui/button'; // Assuming you have a Button component
+import { Button } from '@/components/ui/button';
+import { auth } from '@/lib/firebase';
+import { GithubAuthProvider, signInWithPopup, User } from 'firebase/auth';
+import { initializeUser } from '@/actions/user';
+import { Github } from 'lucide-react';
 
-type Status = 'loading' | 'waiting_for_login' | 'linking' | 'success' | 'error';
+type Status = 'waiting_for_login' | 'linking' | 'success' | 'error';
 
 function CliLoginContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('sessionId');
-  const { user, idToken, login } = useAuth(); // Using your existing auth hook
 
-  const [status, setStatus] = useState<Status>('loading');
+  const [status, setStatus] = useState<Status>('waiting_for_login');
   const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     if (!sessionId) {
       setStatus('error');
       setError('The session ID is missing from the URL. Please try the login command again.');
-      return;
+    }
+  }, [sessionId]);
+
+  const handleLoginSuccess = async (user: User) => {
+    if (!sessionId) {
+        setStatus('error');
+        setError('Session ID is missing. Cannot link session.');
+        return;
     }
 
-    if (user && idToken) {
-      // User is already logged in, proceed to link the session
-      setStatus('linking');
-      
-      fetch('/api/cli/link-session', {
+    setStatus('linking');
+    try {
+      // Ensure user is initialized in our database
+      const githubId = user.providerData.find(p => p.providerId === 'github.com')?.uid;
+      if (!githubId) {
+        throw new Error("Could not find GitHub ID from provider data.");
+      }
+      await initializeUser({
+        uid: user.uid,
+        githubId: githubId,
+        email: user.email,
+        displayName: user.displayName,
+        photoURL: user.photoURL,
+      });
+
+      // Get ID token to authenticate with our API
+      const idToken = await user.getIdToken(true);
+
+      // Link the session
+      const response = await fetch('/api/cli/link-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${idToken}`,
         },
         body: JSON.stringify({ sessionId }),
-      })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error('Failed to link the session. Please try again.');
-        }
-        setStatus('success');
-      })
-      .catch(err => {
-        setStatus('error');
-        setError(err.message);
       });
 
-    } else {
-      // User is not logged in, wait for them to click the login button
-      setStatus('waiting_for_login');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to link the session. Please try again.');
+      }
+
+      setStatus('success');
+    } catch (err: any) {
+      setStatus('error');
+      setError(err.message || 'An unexpected error occurred during login setup.');
+    } finally {
+      setLoading(false);
     }
-  }, [sessionId, user, idToken]);
+  };
+
+  const handleGithubSignIn = async () => {
+    setLoading(true);
+    setError(null);
+    const provider = new GithubAuthProvider();
+    try {
+      const result = await signInWithPopup(auth, provider);
+      await handleLoginSuccess(result.user);
+    } catch (error: any) {
+      if (error.code !== 'auth/popup-closed-by-user') {
+        console.error("GitHub Sign-In Error:", error);
+        setError(error.message || 'Failed to sign in with GitHub.');
+        setStatus('error');
+      }
+      setLoading(false);
+    }
+  };
 
   const renderContent = () => {
     switch (status) {
-      case 'loading':
-        return <p>Loading...</p>;
       case 'waiting_for_login':
         return (
           <>
             <h1 className="text-2xl font-bold mb-4">Login to Jekyll Buildr CLI</h1>
             <p className="mb-6">Click the button below to authenticate with your account.</p>
-            <Button onClick={login} size="lg">
-              Login with GitHub
+            <Button onClick={handleGithubSignIn} size="lg" disabled={loading}>
+              {loading ? 'Redirecting to GitHub...' : (
+                <>
+                  <Github className="mr-2 h-4 w-4" />
+                  Login with GitHub
+                </>
+              )}
             </Button>
           </>
         );
@@ -105,3 +148,4 @@ export default function CliLoginPage() {
     </Suspense>
   );
 }
+
