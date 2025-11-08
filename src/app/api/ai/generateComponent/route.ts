@@ -1,50 +1,49 @@
-// src/app/api/ai/generateComponent/route.ts
-
 import { NextRequest, NextResponse } from 'next/server';
-import { adminAuth } from '@/lib/firebase-admin';
-import { generateJekyllComponent } from '@/ai/flows/jekyll-generator-flow';
+import { adminAuth, adminDb } from '@/lib/firebase-admin';
+// import { generateComponentContent } from '@/actions/ai';
 
-// Konfigurasi Headers untuk CORS
-const corsHeaders = {
-    'Access-Control-Allow-Origin': '*',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-};
+/**
+ * API endpoint to generate Jekyll component code.
+ * This is a protected route. You could add pro-user checks here.
+ */
+export async function POST(req: NextRequest) {
+  if (!adminDb || !adminAuth) {
+    return NextResponse.json({ error: 'Firebase Admin not initialized' }, { status: 500 });
+  }
 
-// Handler untuk preflight request
-export async function OPTIONS(request: NextRequest) {
-    return new NextResponse(null, {
-        status: 204,
-        headers: corsHeaders,
-    });
-}
-
-export async function POST(request: NextRequest) {
-    // 1. Verifikasi Pengguna
-    const authHeader = request.headers.get('authorization');
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401, headers: corsHeaders });
+  try {
+    // 1. Authenticate the user
+    const authorizationHeader = req.headers.get('Authorization');
+    if (!authorizationHeader?.startsWith('Bearer ')) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    const idToken = authHeader.split('Bearer ')[1];
+    const idToken = authorizationHeader.split('Bearer ')[1];
+    const decodedToken = await adminAuth.verifyIdToken(idToken);
+    const uid = decodedToken.uid;
 
-    try {
-        if (!adminAuth) throw new Error("Firebase Admin not configured.");
-        await adminAuth.verifyIdToken(idToken);
-        
-        // 2. Ambil prompt dan path file dari body request
-        const { prompt, activeFilePath } = await request.json();
-        if (!prompt) {
-            return NextResponse.json({ error: 'Prompt is required.' }, { status: 400, headers: corsHeaders });
-        }
+    // 2. (Optional) Check user role. For example, maybe only Pro users can use this.
+    const userDoc = await adminDb.collection('users').doc(uid).get();
+    const userRole = userDoc.data()?.role;
+    // if (userRole !== 'proUser') {
+    //   return NextResponse.json({ error: 'This is a Pro feature.' }, { status: 403 });
+    // }
 
-        // 3. Panggil Genkit Flow-mu
-        const result = await generateJekyllComponent(prompt, activeFilePath);
-
-        // 4. Kirim hasilnya kembali ke ekstensi
-        return NextResponse.json(result, { headers: corsHeaders });
-
-    } catch (error: any) {
-        console.error("AI Component Generation Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500, headers: corsHeaders });
+    // 3. Get payload from request
+    const { prompt } = await req.json();
+    if (!prompt) {
+      return NextResponse.json({ error: 'A prompt is required' }, { status: 400 });
     }
+
+    // 4. Call AI service (placeholder)
+    // const { filename, content } = await generateComponentContent(prompt);
+    const filename = `${prompt.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')}.html`;
+    const content = `<!-- AI-generated component for: "${prompt}" -->\n<div>\n  <p>This is a placeholder for your new component.</p>\n</div>`;
+
+    // 5. Return generated file info
+    return NextResponse.json({ filename, content });
+
+  } catch (error: any) {
+    console.error('Error in /api/ai/generateComponent:', error);
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+  }
 }
