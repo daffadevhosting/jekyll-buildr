@@ -49,19 +49,13 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Prompt is required' }, { status: 400 });
     }
 
-    // 5. Call the AI function (placeholder for now)
-    // TODO: Implement the actual AI generation logic in `@/actions/ai.ts`
-    // const { gemfile, config, index } = await generateJekyllBoilerplate(prompt, uid, userRole);
+    // 5. Call the AI function to generate the Jekyll boilerplate structure
+    const structure = await generateJekyllBoilerplate(prompt, uid, userRole);
     
-    // Using placeholder response until the AI function is fully implemented
-    const gemfile = "# Placeholder Gemfile generated for prompt: \"${prompt}\"\nsource \"https://rubygems.org\"\ngem \"jekyll\"";
-    const config = "# Placeholder _config.yml\ntitle: My Awesome Jekyll Site\ndescription: \"${prompt}\"";
-    
-    // 6. Return the generated content
+    // 6. Return the generated structure
     return NextResponse.json({
       message: 'AI processing successful',
-      gemfile,
-      config,
+      structure,
     });
 
   } catch (error: any) {
