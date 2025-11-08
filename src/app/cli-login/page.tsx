@@ -1,13 +1,13 @@
 'use client';
 
 import { useSearchParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import { useAuth } from '@/hooks/use-auth'; // Assuming this hook exists and provides user and token
 import { Button } from '@/components/ui/button'; // Assuming you have a Button component
 
 type Status = 'loading' | 'waiting_for_login' | 'linking' | 'success' | 'error';
 
-export default function CliLoginPage() {
+function CliLoginContent() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get('sessionId');
   const { user, idToken, login } = useAuth(); // Using your existing auth hook
@@ -95,5 +95,13 @@ export default function CliLoginPage() {
         {renderContent()}
       </div>
     </div>
+  );
+}
+
+export default function CliLoginPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><p>Loading...</p></div>}>
+      <CliLoginContent />
+    </Suspense>
   );
 }
