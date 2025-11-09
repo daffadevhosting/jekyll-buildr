@@ -63,6 +63,7 @@ import { checkAndRecordComponentGeneration } from '@/actions/user';
 import { PostEditor } from '@/components/app/post-editor';
 import { useRouter } from 'next/navigation';
 import Terminal from '@/components/app/terminal';
+import { PreviewPane } from '@/components/app/preview-pane';
 import { executeTerminalCommand } from '@/actions/terminal';
 import { auth } from '@/lib/firebase';
 
@@ -357,6 +358,8 @@ function HomePageContent() {
   const [isTerminalOpen, setIsTerminalOpen] = React.useState(false);
   const [terminalOutput, setTerminalOutput] = React.useState<Array<{id: string; content: string; type: 'input' | 'output' | 'error' | 'info'; timestamp: Date}>>([]);
   const [isProcessing, setIsProcessing] = React.useState(false);
+  const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
+  const [previewPort, setPreviewPort] = React.useState<number | null>(null);
 
 
   React.useEffect(() => {
@@ -1131,6 +1134,11 @@ function HomePageContent() {
       }
     ]);
 
+    // Automatically open preview pane when a jekyll serve command is detected
+    if (command.includes('jekyll serve') || command.includes('bundle exec jekyll serve')) {
+      setIsPreviewOpen(true);
+    }
+
     setIsProcessing(true);
     
     try {
@@ -1142,10 +1150,8 @@ function HomePageContent() {
       
       const idToken = await currentUser.getIdToken();
       
-      // In a real implementation, we'd execute the command in the appropriate workspace context
-      // For now, we'll use a simulated execution with the user's ID as part of the workspace 
-      // to maintain user isolation in the demo
-      const result = await executeTerminalCommand(command, 'current', idToken);
+      // Execute the command in the current workspace context
+      const result = await executeTerminalCommand(command, activeWorkspaceId || 'default', idToken);
       
       if (result.success && result.output) {
         setTerminalOutput(prev => [
@@ -1422,6 +1428,20 @@ function HomePageContent() {
                       <p>Terminal (Ctrl+`)</p>
                     </TooltipContent>
                   </Tooltip>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setIsPreviewOpen(!isPreviewOpen)}
+                      >
+                        <span className="font-mono text-xs">👁️</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Preview</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TooltipProvider>
               </div>
             </div>
@@ -1434,6 +1454,16 @@ function HomePageContent() {
             />
           </section>
         </main>
+        {isPreviewOpen && (
+          <div className="fixed bottom-0 left-0 right-0 top-1/2 bg-white dark:bg-gray-900 z-40 border-t border-gray-200 dark:border-gray-700">
+            <PreviewPane
+              className="h-full w-full"
+              workspaceId={activeWorkspaceId || 'default'}
+              onPreviewStart={(port) => setPreviewPort(port)}
+              onPreviewStop={() => setPreviewPort(null)}
+            />
+          </div>
+        )}
         <Terminal
           isTerminalOpen={isTerminalOpen}
           setIsTerminalOpen={setIsTerminalOpen}
@@ -1441,6 +1471,17 @@ function HomePageContent() {
           onCommandSubmit={handleTerminalCommand}
           terminalOutput={terminalOutput}
         />
+        {isPreviewOpen && (
+          <div className="fixed bottom-16 right-4 z-50">
+            <Button 
+              onClick={() => setIsPreviewOpen(false)}
+              variant="secondary"
+              size="sm"
+            >
+              Close Preview
+            </Button>
+          </div>
+        )}
         <AppFooter
           onPublish={() => setShowPublishConfirm(true)}
           isPublishing={isPublishing}

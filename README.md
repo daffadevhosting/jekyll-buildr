@@ -1,82 +1,121 @@
-# Jekyll Buildr v.2.1 [with AI Generation]
+# Jekyll Buildr - Modern Jekyll Development Platform
 
-Welcome to Jekyll Buildr, a modern mini-IDE web-based editor designed to streamline your Jekyll workflow. Built with a powerful tech stack, this application provides an intuitive interface to create, edit, and manage your Jekyll projects, complete with AI-powered features and direct integration with VScode & GitHub.
+[![NPM Version](https://img.shields.io/npm/v/jekyll-buildr-cli.svg)](https://www.npmjs.com/package/jekyll-buildr-cli)
+[![License](https://img.shields.io/npm/l/jekyll-buildr-cli.svg)](https://github.com/DaffaDev/jekyll-buildr-cli/blob/main/LICENSE)
+![Status](https://img.shields.io/badge/status-release-green)
+[![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/DaffaDev.jekyll-buildr?label=VS%20Code%20Extension)](https://marketplace.visualstudio.com/items?itemName=DaffaDev.jekyll-buildr)
 
-VS Code extension:
-```sh
+**Jekyll Buildr** is a comprehensive development platform for Jekyll websites, available in three integrated versions:
+- **Web App**: Browser-based mini-IDE with AI features
+- **CLI Tool**: Command-line interface for advanced developers
+- **VS Code Extension**: Integrated development environment for VS Code
+
+## 🌟 Key Features
+
+### 🖥️ **Browser-Based Integrated Development Environment**
+- **Full-Featured Code Editor**: In-browser editor with syntax highlighting for HTML, Markdown, YAML, CSS, and more
+- **File Management**: Complete file explorer with create, rename, and delete capabilities
+- **Real-time Jekyll Preview**: Interactive preview pane that shows live updates when running `jekyll serve`
+- **Terminal Integration**: Built-in terminal emulator with support for Jekyll commands, bundle management, and system operations
+- **Keyboard Shortcuts**: Efficient shortcuts including `Ctrl + `` to toggle terminal
+
+### 🤖 **AI-Powered Development Tools**
+- **AI Component Generation**: Describe what you need and generate Jekyll-compliant HTML and Liquid code
+- **AI Code Completion**: Mini-Copilot with real-time code suggestions (Pro feature)
+- **AI Code Fixes**: One-click error correction for problematic code (Pro feature)
+- **AI Content Generation**: Create blog posts and content from text prompts
+- **AI Image Generation**: Generate unique images for your site from descriptions
+
+### 🔐 **Secure GitHub Integration**
+- **GitHub OAuth**: Secure authentication using your GitHub account
+- **Repository Cloning**: Import GitHub repositories directly into the editor
+- **Push to Branch**: Commit and push changes directly to your GitHub repository
+- **Pull Request Creation**: Create new branches and pull requests for code review workflows
+- **Cloud Auto-Save**: Automatic saving to Firestore every 2 seconds
+
+### 💰 **Pro Tier Features**
+- **Unlimited Workspaces**: Create and manage multiple projects simultaneously
+- **Advanced AI Tools**: Enhanced code completion, fixes, and generation capabilities
+- **Priority Support**: Dedicated support for Pro users
+
+## 📦 Available Versions
+
+### 1. Web Application
+The browser-based IDE with all features accessible through your web browser.
+
+### 2. CLI Tool
+Command-line interface for developers who prefer terminal-based workflows.
+
+```bash
+npm install -g jekyll-buildr-cli
+```
+
+### 3. VS Code Extension
+Full integration with Visual Studio Code for desktop development.
+
+```bash
 ext install DaffaDev.jekyll-buildr
 ```
 
-CLI Version
-```sh
-npm i -g jekyll-buildr-cli
-```
-
-[![NPM Version](https://img.shields.io/npm/v/jekyll-buildr-cli.svg)](https://www.npmjs.com/package/jekyll-buildr-cli)
-[![License](https://img.shields.io/npm/l/jekyll-buildr-cli.svg)](https://github.com/your-username/jekyll-buildr-cli/blob/main/LICENSE)
-![Status](https://img.shields.io/badge/status-release-green)
-![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/DaffaDev.jekyll-buildr?label=Marketplace)
-
-## ✨ Key Features
-
-*   **🌀️ VSCode Integrated**: All AI features are integrated with Jekyll Buildr VS Code extension.
-*   **💻 In-Browser Code Editor**: A full-featured mini-IDE / code editor with syntax highlighting for various file types (`.html`, `.md`, `.yml`, `.css`, etc.), right in your browser.
-*   **🗂️ File Management**: A familiar file explorer to navigate, create, rename, and delete files and folders within your Jekyll project structure.
-*   **🤖 AI Component Generation**: Describe a component you need—like a navigation bar or a post layout—and let the AI generate the Jekyll-compliant HTML and Liquid code for you.
-*   **🧑‍💻️ AI Code Completion**: Mini-Copilot that can provide code suggestions, 'click the tab' to apply the AI code suggestions.
-*   **🛠️ AI Code fixes**: AI can fix error code by blocking the error code and clicking the 'Wrench' button and let AI fix your code.
-*   **🧾️ AI Content Generation**: AI can help you create content and images based on the title prompt you input.
-*   **🎨 AI Image Generation**: Generate unique images for your posts and assets by simply providing a text prompt.
-*   **💻 Integrated Terminal**: Built-in terminal emulator to run Jekyll commands directly from the web interface. Features include:
-    *   **Jekyll Commands**: Run `jekyll build`, `jekyll serve`, `jekyll doctor` and other Jekyll commands
-    *   **Bundle Commands**: Execute `bundle install` and other Ruby dependency management commands
-    *   **System Commands**: Access file system commands like `ls`, `pwd`, and `cat`
-    *   **Secure Execution**: Commands run in a safe, sandboxed environment with command whitelisting
-    *   **Keyboard Shortcut**: Toggle terminal with `Ctrl + `` (backtick)
-    *   **Interactive Output**: View command output, errors, and progress in real-time
-*   **🔐 Secure Authentication**: User authentication is handled securely via GitHub OAuth through Firebase Authentication.
-*   **🚀 Direct GitHub Integration**:
-    *   **Repository Cloning**: Users can import (clone) a public repository from GitHub to start a new project, where the application will automatically fetch all the text files.
-    *   **Push to Branch**: Commit and push all your changes directly to your selected GitHub repository branch.
-    *   **Create Pull Requests**: Create a new branch, commit your changes, and open a pull request for a safer, review-based workflow.
-    *   **Auto-save to Cloud**: Any changes to code or file structure will be automatically saved to Firestore every 2 seconds, ensuring no work is lost.
-
-*   **👑 Pro Tier Subscriptions**: Unlock advanced features by upgrading to a Pro account, managed via PayPal subscriptions.
-    - **Multi-Workspace Management**: Ability to create, save, and switch between unlimited projects/repositories.
-    - **AI Code Completion (Mini-Copilot)**: An AI assistant integrated into the editor to provide real-time code completion suggestions, powered by Gemini 2.5pro.
-    - **AI Fix Code**: Advanced feature to analyze and fix all problematic code files automatically with one click.
-    - **AI Component, Image & Post Generation**: The ability to generate Jekyll components or entire blog posts and image from just a short text description.
-
-### 🌐️ result buildr for [My Blog Site](https://daffadevhosting.github.io/blog/)
-
 ## 🛠️ Tech Stack
 
-*   **Framework**: [Next.js](https://nextjs.org/) (with App Router)
-*   **Language**: [TypeScript](https://www.typescriptlang.org/)
-*   **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-*   **UI Components**: [ShadCN UI](https://ui.shadcn.com/)
-*   **Authentication & Database**: [Firebase](https://firebase.google.com/) (Auth, Firestore)
-*   **AI Features**: [Google AI & Genkit](https://firebase.google.com/docs/genkit)
-*   **Payments**: [PayPal](https://www.paypal.com/)
+- **Framework**: [Next.js](https://nextjs.org/) (with App Router)
+- **Language**: [TypeScript](https://www.typescriptlang.org/)
+- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
+- **UI Components**: [ShadCN UI](https://ui.shadcn.com/)
+- **Authentication & Database**: [Firebase](https://firebase.google.com/) (Auth, Firestore)
+- **AI Features**: [Google AI & Genkit](https://firebase.google.com/docs/genkit)
+- **Payments**: [PayPal](https://www.paypal.com/)
+- **Terminal**: [xterm.js](https://xtermjs.org/) for terminal emulation
 
 ## 🚀 Getting Started
 
-1.  **Login**: Sign in to the application using your GitHub account.
-2.  **Connect GitHub**: Navigate to the **Settings** page.
-3.  **Install App**: Click "Connect with GitHub" to install the Jekyll Buildr GitHub App on your desired repositories.
-4.  **Select Repo & Branch**: Once connected, select the repository and the primary branch you want to work on.
-5.  **Edit & Create**: Return to the main editor page. You can now edit existing files or create new files and folders.
-6.  **Use AI**:
-    *   Click the **✨ (Sparkles)** icon in the editor header to generate a Jekyll component from a text prompt.
-    *   In the `assets/images` folder, use the **✨ (Sparkles)** icon to generate an image from a text prompt.
-7.  **Publish**:
-    *   Use the **Push to GitHub** button to commit your changes directly to the selected branch.
-    *   Use the **Create Pull Request** button for a safer workflow, which will create a new branch and a PR for you to review and merge on GitHub.
+### Web Application
+1. **Sign In**: Log in using your GitHub account at [jekyll-buildr.vercel.app](https://jekyll-buildr.vercel.app)
+2. **Connect GitHub**: Install the Jekyll Buildr GitHub App in your repositories
+3. **Select Project**: Choose your repository and branch to begin working
+4. **Start Developing**: Create, edit, and manage your Jekyll site
 
-8.  **Using the Integrated Terminal**:
-    *   **Open Terminal**: Click the `>_` icon in the top toolbar or press `Ctrl + `` (backtick) to open the terminal
-    *   **Run Jekyll Commands**: Type commands like `jekyll build`, `jekyll serve`, or `jekyll doctor` and press Enter
-    *   **Manage Dependencies**: Run `bundle install` to install Ruby gems required by your Jekyll project
-    *   **View Output**: See command results, errors, and progress in the terminal output area
-    *   **System Commands**: Use basic commands like `ls` to list files, `pwd` to show current directory, and `cat` to view file contents
-    *   **Close Terminal**: Click the × button in the top-right corner of the terminal or press `Ctrl + `` again
+### CLI Tool
+```bash
+# Install globally
+npm install -g jekyll-buildr-cli
+
+# Initialize a new project
+jekyll-buildr init my-blog
+
+# Or connect to existing project
+jekyll-buildr connect <repository-url>
+```
+
+### VS Code Extension
+1. Install from the VS Code Marketplace
+2. Sign in with your Jekyll Buildr account
+3. Open your Jekyll project
+4. Access all features directly in VS Code
+
+## 📚 Using the Integrated Terminal
+
+The web app includes a powerful terminal emulator:
+
+- **Open Terminal**: Click the `>_` icon or press `Ctrl + `` (backtick)
+- **Run Jekyll Commands**: Execute `jekyll serve`, `jekyll build`, `jekyll doctor`
+- **Manage Dependencies**: Run `bundle install` and other Ruby commands
+- **System Commands**: Use `ls`, `pwd`, `cat`, and other file operations
+- **Real-time Preview**: When running `jekyll serve`, the preview pane automatically activates
+
+## 💡 Example Output
+
+Check out a live example of a blog created with Jekyll Buildr: [My Blog Site](https://daffadevhosting.github.io/blog/)
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [Contributing Guide](CONTRIBUTING.md) for more details.
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🆘 Support
+
+For support, please open an issue in this repository or contact us through the application.
