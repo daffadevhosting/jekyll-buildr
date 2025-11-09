@@ -12,6 +12,8 @@ CLI Version
 npm i -g jekyll-buildr-cli
 ```
 
+[![NPM Version](https://img.shields.io/npm/v/jekyll-buildr-cli.svg)](https://www.npmjs.com/package/jekyll-buildr-cli)
+[![License](https://img.shields.io/npm/l/jekyll-buildr-cli.svg)](https://github.com/your-username/jekyll-buildr-cli/blob/main/LICENSE)
 ![Status](https://img.shields.io/badge/status-release-green)
 ![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/DaffaDev.jekyll-buildr?label=Marketplace)
 
