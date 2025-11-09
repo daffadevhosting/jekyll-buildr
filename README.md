@@ -94,6 +94,35 @@ jekyll-buildr connect <repository-url>
 3. Open your Jekyll project
 4. Access all features directly in VS Code
 
+## ⚙️ Environment Requirements (For Self-Hosting)
+
+To run Jekyll commands within the application, your environment must have:
+
+- **Ruby** (version 2.5.0 or higher)
+- **Bundler** (installed via `gem install bundler`)
+- **Jekyll** (installed via `gem install jekyll`)
+
+### Installing Dependencies on Ubuntu/Debian:
+```bash
+# Install Ruby and related tools
+sudo apt update
+sudo apt install ruby-full build-essential zlib1g-dev
+
+# Install Bundler and Jekyll
+gem install bundler jekyll
+```
+
+### Installing Dependencies on macOS:
+```bash
+# Using Homebrew
+brew install ruby
+gem install bundler jekyll
+```
+
+### Installing Dependencies on Windows:
+- Install Ruby+Devkit from [RubyInstaller](https://rubyinstaller.org/)
+- Install Jekyll: `gem install jekyll bundler`
+
 ## 📚 Using the Integrated Terminal
 
 The web app includes a powerful terminal emulator:
