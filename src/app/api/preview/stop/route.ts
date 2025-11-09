@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { serverMap } from '@/lib/jekyll-server';
+import { TempFileManager } from '@/lib/temp-file-manager';
+
+const tempFileManager = new TempFileManager();
 
 export async function POST(req: NextRequest) {
   try {
@@ -18,6 +21,11 @@ export async function POST(req: NextRequest) {
       
       // Stop the server
       server.stop();
+      
+      // Cleanup temporary workspace if it exists
+      if (server.tempWorkspacePath) {
+        await tempFileManager.cleanupWorkspace(server.tempWorkspacePath);
+      }
       
       // Remove from the map
       serverMap.delete(workspaceId);

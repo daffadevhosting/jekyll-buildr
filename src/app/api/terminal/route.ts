@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
-import { spawn } from 'child_process';
-import { promisify } from 'util';
 import { exec } from 'child_process';
+import { promisify } from 'util';
 import path from 'path';
-import fs from 'fs/promises';
+import { getWorkspaceState } from '@/actions/content';
+import { TempFileManager } from '@/lib/temp-file-manager';
 
 const execPromise = promisify(exec);
+const tempFileManager = new TempFileManager();
 
 export async function POST(req: NextRequest) {
   try {
@@ -31,7 +32,7 @@ export async function POST(req: NextRequest) {
     const userRole = userData?.role;
 
     // 3. Get the command from the request body
-    const { command, workspacePath } = await req.json();
+    const { command, workspaceId } = await req.json();
 
     if (!command) {
       return NextResponse.json({ error: 'Command is required' }, { status: 400 });
@@ -64,49 +65,52 @@ export async function POST(req: NextRequest) {
       }, { status: 400 });
     }
 
-    // Validate workspace path to prevent directory traversal attacks
-    // In a real implementation, you'd fetch the user's actual workspace path from the database
-    // For demo purposes we'll construct a user-specific path
-    let workingDir = workspacePath;
-    if (!workingDir) {
-      return NextResponse.json({
-        error: 'Workspace path is required for security purposes.'
-      }, { status: 400 });
-    }
-
-    // Sanitize workspace path to prevent directory traversal
-    // Construct user-specific workspace directory
-    const userWorkspaceBase = path.join(process.env.WORKSPACE_BASE_DIR || '/tmp/workspaces', uid);
-    workingDir = path.resolve(userWorkspaceBase, workingDir);
-    const baseDir = path.resolve(userWorkspaceBase);
-
-    if (!workingDir.startsWith(baseDir)) {
-      return NextResponse.json({
-        error: 'Invalid workspace path: Path traversal detected.'
-      }, { status: 400 });
-    }
-
-    // Execute the actual command
-    const { stdout, stderr } = await execPromise(command, {
-      cwd: workingDir,
-      timeout: 60000, // 60 second timeout for longer operations
-      env: {
-        ...process.env,
-        // Add any necessary environment variables for Ruby/bundler
-        BUNDLE_GEMFILE: path.join(workingDir, 'Gemfile'),
+    // If workspaceId is provided, get the current file state and create a temporary workspace
+    let workingDir = '/tmp/default';
+    if (workspaceId) {
+      // Get the current workspace state (file structure and contents)
+      const workspaceState = await getWorkspaceState(workspaceId);
+      
+      if (workspaceState.success && workspaceState.data && workspaceState.data.fileContents) {
+        // Create a temporary workspace with the current files
+        workingDir = await tempFileManager.createWorkspace(workspaceId, workspaceState.data.fileContents);
+      } else {
+        // If workspace doesn't exist or is invalid, create a basic structure
+        workingDir = `/tmp/jekyll-workspaces/${workspaceId}`;
+        // We might not have file contents, but Jekyll commands may still work if run in the right directory
       }
-    });
+    }
 
-    const output = stdout;
-    const error = stderr;
+    try {
+      // Execute the actual command
+      const { stdout, stderr } = await execPromise(command, {
+        cwd: workingDir,
+        timeout: 60000, // 60 second timeout for longer operations
+        env: {
+          ...process.env,
+          // Add any necessary environment variables for Ruby/bundler
+          BUNDLE_GEMFILE: path.join(workingDir, 'Gemfile'),
+        }
+      });
 
-    return NextResponse.json({
-      success: true,
-      output,
-      error: error || null,
-      command,
-      timestamp: new Date().toISOString()
-    });
+      const output = stdout;
+      const error = stderr;
+
+      return NextResponse.json({
+        success: true,
+        output,
+        error: error || null,
+        command,
+        timestamp: new Date().toISOString()
+      });
+    } finally {
+      // For 'jekyll serve' command, don't cleanup the temp directory immediately
+      // since it needs to stay available for the preview server
+      if (!command.includes('jekyll serve')) {
+        // Cleanup the temporary workspace after command execution (except for serve command)
+        await tempFileManager.cleanupWorkspace(workingDir);
+      }
+    }
 
   } catch (error: any) {
     console.error('Error executing terminal command:', error);

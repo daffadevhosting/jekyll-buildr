@@ -9,7 +9,7 @@ interface TerminalResponse {
 
 export async function executeTerminalCommand(
   command: string,
-  workspacePath?: string,
+  workspaceId?: string,
   token?: string
 ): Promise<TerminalResponse> {
   try {
@@ -26,7 +26,7 @@ export async function executeTerminalCommand(
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
       },
-      body: JSON.stringify({ command, workspacePath }),
+      body: JSON.stringify({ command, workspaceId }),
     });
 
     if (!response.ok) {

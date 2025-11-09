@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { serverMap, JekyllServer } from '@/lib/jekyll-server';
+import { TempFileManager } from '@/lib/temp-file-manager';
+import { getWorkspaceState } from '@/actions/content';
+
+const tempFileManager = new TempFileManager();
 
 export async function POST(req: NextRequest) {
   try {
@@ -12,18 +16,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // In a real implementation, you would get the user's workspace path from their session/data
-    // For now we'll use a default path, but in production this should be user-specific
-    const workspacePath = `/tmp/jekyll-workspaces/${workspaceId}`;
+    // Get the current workspace state (file structure and contents)
+    const workspaceState = await getWorkspaceState(workspaceId);
+    
+    if (!workspaceState.success || !workspaceState.data) {
+      return NextResponse.json(
+        { error: 'Workspace not found or inaccessible' },
+        { status: 404 }
+      );
+    }
+
+    const { fileContents } = workspaceState.data;
+
+    // Create a temporary workspace with the current files
+    const tempWorkspacePath = await tempFileManager.createWorkspace(workspaceId, fileContents);
     
     // Check if there's already a server running for this workspace
     if (serverMap.has(workspaceId)) {
       const existingServer = serverMap.get(workspaceId)!;
       if (existingServer.isRunning()) {
+        // If server is already running, return current status
         return NextResponse.json({
           success: true,
           message: 'Server already running',
-          port: existingServer.getPort()
+          port: existingServer.getPort(),
+          tempWorkspacePath
         });
       } else {
         serverMap.delete(workspaceId);
@@ -33,7 +50,7 @@ export async function POST(req: NextRequest) {
     // Create new Jekyll server instance
     const server = new JekyllServer({
       port: port || 4000,
-      workingDir: workspacePath,
+      workingDir: tempWorkspacePath,
       liveReload
     });
 
@@ -48,17 +65,27 @@ export async function POST(req: NextRequest) {
       console.error(`[Jekyll Server Error - ${workspaceId}]:`, data);
     });
 
-    // Start the server
-    await server.start();
+    try {
+      // Start the server
+      await server.start();
 
-    // Store the server instance
-    serverMap.set(workspaceId, server);
+      // Store the server instance with the temporary workspace path
+      serverMap.set(workspaceId, {
+        ...server,
+        tempWorkspacePath  // Store the temp path for cleanup
+      } as any);
 
-    return NextResponse.json({
-      success: true,
-      message: 'Jekyll server started successfully',
-      port: server.getPort()
-    });
+      return NextResponse.json({
+        success: true,
+        message: 'Jekyll server started successfully',
+        port: server.getPort(),
+        tempWorkspacePath
+      });
+    } catch (serverError) {
+      // If server failed to start, cleanup the temporary files
+      await tempFileManager.cleanupWorkspace(tempWorkspacePath);
+      throw serverError;
+    }
   } catch (error) {
     console.error('Error starting Jekyll server:', error);
     return NextResponse.json(
