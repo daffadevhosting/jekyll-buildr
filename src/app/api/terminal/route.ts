@@ -65,18 +65,20 @@ export async function POST(req: NextRequest) {
     }
 
     // Validate workspace path to prevent directory traversal attacks
+    // In a real implementation, you'd fetch the user's actual workspace path from the database
+    // For demo purposes we'll construct a user-specific path
     let workingDir = workspacePath;
     if (!workingDir) {
-      // In a real implementation you'd get the user's actual workspace path
-      // For now we'll use a default or throw an error
       return NextResponse.json({ 
         error: 'Workspace path is required for security purposes.' 
       }, { status: 400 });
     }
 
     // Sanitize workspace path to prevent directory traversal
-    workingDir = path.resolve(process.cwd(), workingDir);
-    const baseDir = path.resolve(process.env.WORKSPACE_BASE_DIR || process.cwd()); // Adjust this to your actual base directory
+    // Construct user-specific workspace directory
+    const userWorkspaceBase = path.join(process.env.WORKSPACE_BASE_DIR || '/tmp/workspaces', uid);
+    workingDir = path.resolve(userWorkspaceBase, workingDir);
+    const baseDir = path.resolve(userWorkspaceBase);
     
     if (!workingDir.startsWith(baseDir)) {
       return NextResponse.json({ 

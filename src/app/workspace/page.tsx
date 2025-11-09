@@ -64,6 +64,7 @@ import { PostEditor } from '@/components/app/post-editor';
 import { useRouter } from 'next/navigation';
 import Terminal from '@/components/app/terminal';
 import { executeTerminalCommand } from '@/actions/terminal';
+import { auth } from '@/lib/firebase';
 
 const initialFileStructure: FileNode[] = [
   {
@@ -1133,10 +1134,18 @@ function HomePageContent() {
     setIsProcessing(true);
     
     try {
+      // Get the current user's ID token for authentication
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        throw new Error('User not authenticated');
+      }
+      
+      const idToken = await currentUser.getIdToken();
+      
       // In a real implementation, we'd execute the command in the appropriate workspace context
-      // For now, we'll use a simulated execution
-      // Note: In a real implementation you would get the actual auth token from the user context
-      const result = await executeTerminalCommand(command, '/tmp/workspace', user?.token); // Pass actual token if available
+      // For now, we'll use a simulated execution with the user's ID as part of the workspace 
+      // to maintain user isolation in the demo
+      const result = await executeTerminalCommand(command, 'current', idToken);
       
       if (result.success && result.output) {
         setTerminalOutput(prev => [

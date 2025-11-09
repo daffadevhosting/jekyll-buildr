@@ -13,11 +13,18 @@ export async function executeTerminalCommand(
   token?: string
 ): Promise<TerminalResponse> {
   try {
+    if (!token) {
+      return {
+        success: false,
+        error: 'Authentication token is required',
+      };
+    }
+
     const response = await fetch(`/api/terminal`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token || ''}`, // Token should be passed from the component
+        'Authorization': `Bearer ${token}`,
       },
       body: JSON.stringify({ command, workspacePath }),
     });
