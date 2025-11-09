@@ -7,6 +7,11 @@ VS Code extension:
 ext install DaffaDev.jekyll-buildr
 ```
 
+CLI Version
+```sh
+npm i jekyll-buildr-cli
+```
+
 ![Status](https://img.shields.io/badge/status-release-green)
 ![VS Code Marketplace](https://img.shields.io/visual-studio-marketplace/v/DaffaDev.jekyll-buildr?label=Marketplace)
 
