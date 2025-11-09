@@ -62,6 +62,8 @@ import {Textarea} from '@/components/ui/textarea';
 import { checkAndRecordComponentGeneration } from '@/actions/user';
 import { PostEditor } from '@/components/app/post-editor';
 import { useRouter } from 'next/navigation';
+import Terminal from '@/components/app/terminal';
+import { executeTerminalCommand } from '@/actions/terminal';
 
 const initialFileStructure: FileNode[] = [
   {
@@ -351,6 +353,9 @@ function HomePageContent() {
   const [syncedFileState, setSyncedFileState] = React.useState<{[path: string]: string}>({});
   const [showPublishConfirm, setShowPublishConfirm] = React.useState(false);
   const [workspaceName, setWorkspaceName] = React.useState<string | null>(null);
+  const [isTerminalOpen, setIsTerminalOpen] = React.useState(false);
+  const [terminalOutput, setTerminalOutput] = React.useState<Array<{id: string; content: string; type: 'input' | 'output' | 'error' | 'info'; timestamp: Date}>>([]);
+  const [isProcessing, setIsProcessing] = React.useState(false);
 
 
   React.useEffect(() => {
@@ -1112,6 +1117,64 @@ function HomePageContent() {
     setPrompt('');
   };
 
+  const handleTerminalCommand = async (command: string) => {
+    // Add the command to the output as input
+    const commandId = Date.now().toString();
+    setTerminalOutput(prev => [
+      ...prev, 
+      {
+        id: `cmd-${commandId}`,
+        content: command,
+        type: 'input',
+        timestamp: new Date()
+      }
+    ]);
+
+    setIsProcessing(true);
+    
+    try {
+      // In a real implementation, we'd execute the command in the appropriate workspace context
+      // For now, we'll use a simulated execution
+      // Note: In a real implementation you would get the actual auth token from the user context
+      const result = await executeTerminalCommand(command, '/tmp/workspace', user?.token); // Pass actual token if available
+      
+      if (result.success && result.output) {
+        setTerminalOutput(prev => [
+          ...prev, 
+          {
+            id: `out-${Date.now()}`,
+            content: result.output,
+            type: 'output',
+            timestamp: new Date()
+          }
+        ]);
+      } else {
+        const errorMsg = result.error || 'Unknown error occurred';
+        setTerminalOutput(prev => [
+          ...prev, 
+          {
+            id: `err-${Date.now()}`,
+            content: `Error: ${errorMsg}`,
+            type: 'error',
+            timestamp: new Date()
+          }
+        ]);
+      }
+    } catch (error: any) {
+      setTerminalOutput(prev => [
+        ...prev, 
+        {
+          id: `err-${Date.now()}`,
+          content: `Error: ${error.message || 'Failed to execute command'}`,
+          type: 'error',
+          timestamp: new Date()
+        }
+      ]);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
   const folderToggle = React.useCallback((path: string) => {
     setExpandedFolders((prev) => {
       const newSet = new Set(prev);
@@ -1159,6 +1222,20 @@ function HomePageContent() {
       router.push('/login');
     }
   }, [user, loading, router]);
+
+  // Handle keyboard shortcuts
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Toggle terminal with Ctrl + `
+      if (e.ctrlKey && e.key === '`') {
+        e.preventDefault();
+        setIsTerminalOpen(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
   
   if (loading || loadingState === 'loading' || loadingState === 'idle') {
     return (
@@ -1322,6 +1399,20 @@ function HomePageContent() {
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => setIsTerminalOpen(!isTerminalOpen)}
+                      >
+                        <span className="font-mono text-xs">&gt;_</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Terminal (Ctrl+`)</p>
+                    </TooltipContent>
+                  </Tooltip>
                 </TooltipProvider>
               </div>
             </div>
@@ -1334,6 +1425,13 @@ function HomePageContent() {
             />
           </section>
         </main>
+        <Terminal
+          isTerminalOpen={isTerminalOpen}
+          setIsTerminalOpen={setIsTerminalOpen}
+          isProcessing={isProcessing}
+          onCommandSubmit={handleTerminalCommand}
+          terminalOutput={terminalOutput}
+        />
         <AppFooter
           onPublish={() => setShowPublishConfirm(true)}
           isPublishing={isPublishing}

@@ -20,6 +20,13 @@ ext install DaffaDev.jekyll-buildr
 *   **🛠️ AI Code fixes**: AI can fix error code by blocking the error code and clicking the 'Wrench' button and let AI fix your code.
 *   **🧾️ AI Content Generation**: AI can help you create content and images based on the title prompt you input.
 *   **🎨 AI Image Generation**: Generate unique images for your posts and assets by simply providing a text prompt.
+*   **💻 Integrated Terminal**: Built-in terminal emulator to run Jekyll commands directly from the web interface. Features include:
+    *   **Jekyll Commands**: Run `jekyll build`, `jekyll serve`, `jekyll doctor` and other Jekyll commands
+    *   **Bundle Commands**: Execute `bundle install` and other Ruby dependency management commands
+    *   **System Commands**: Access file system commands like `ls`, `pwd`, and `cat`
+    *   **Secure Execution**: Commands run in a safe, sandboxed environment with command whitelisting
+    *   **Keyboard Shortcut**: Toggle terminal with `Ctrl + `` (backtick)
+    *   **Interactive Output**: View command output, errors, and progress in real-time
 *   **🔐 Secure Authentication**: User authentication is handled securely via GitHub OAuth through Firebase Authentication.
 *   **🚀 Direct GitHub Integration**:
     *   **Repository Cloning**: Users can import (clone) a public repository from GitHub to start a new project, where the application will automatically fetch all the text files.
@@ -58,3 +65,11 @@ ext install DaffaDev.jekyll-buildr
 7.  **Publish**:
     *   Use the **Push to GitHub** button to commit your changes directly to the selected branch.
     *   Use the **Create Pull Request** button for a safer workflow, which will create a new branch and a PR for you to review and merge on GitHub.
+
+8.  **Using the Integrated Terminal**:
+    *   **Open Terminal**: Click the `>_` icon in the top toolbar or press `Ctrl + `` (backtick) to open the terminal
+    *   **Run Jekyll Commands**: Type commands like `jekyll build`, `jekyll serve`, or `jekyll doctor` and press Enter
+    *   **Manage Dependencies**: Run `bundle install` to install Ruby gems required by your Jekyll project
+    *   **View Output**: See command results, errors, and progress in the terminal output area
+    *   **System Commands**: Use basic commands like `ls` to list files, `pwd` to show current directory, and `cat` to view file contents
+    *   **Close Terminal**: Click the × button in the top-right corner of the terminal or press `Ctrl + `` again
