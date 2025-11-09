@@ -9,7 +9,7 @@ ext install DaffaDev.jekyll-buildr
 
 CLI Version
 ```sh
-npm i jekyll-buildr-cli
+npm i -g jekyll-buildr-cli
 ```
 
 ![Status](https://img.shields.io/badge/status-release-green)
