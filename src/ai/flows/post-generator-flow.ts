@@ -40,7 +40,7 @@ Return a single JSON object with exactly these keys:
       {
         model: 'post',
         temperature: 0.7,
-        maxTokens: 2048,
+        maxTokens: 4096,
         // Schema is used by generateText only when the model supports JSON Mode.
         // Gemma does not — the prompt above already asks for JSON.
         jsonSchema: {

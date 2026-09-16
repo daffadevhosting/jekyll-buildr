@@ -62,10 +62,6 @@ import {Textarea} from '@/components/ui/textarea';
 import { checkAndRecordComponentGeneration } from '@/actions/user';
 import { PostEditor } from '@/components/app/post-editor';
 import { useRouter } from 'next/navigation';
-import Terminal from '@/components/app/terminal';
-import { PreviewPane } from '@/components/app/preview-pane';
-import { executeTerminalCommand } from '@/actions/terminal';
-import { auth } from '@/lib/firebase';
 
 const initialFileStructure: FileNode[] = [
   {
@@ -355,11 +351,6 @@ function HomePageContent() {
   const [syncedFileState, setSyncedFileState] = React.useState<{[path: string]: string}>({});
   const [showPublishConfirm, setShowPublishConfirm] = React.useState(false);
   const [workspaceName, setWorkspaceName] = React.useState<string | null>(null);
-  const [isTerminalOpen, setIsTerminalOpen] = React.useState(false);
-  const [terminalOutput, setTerminalOutput] = React.useState<Array<{id: string; content: string; type: 'input' | 'output' | 'error' | 'info'; timestamp: Date}>>([]);
-  const [isProcessing, setIsProcessing] = React.useState(false);
-  const [isPreviewOpen, setIsPreviewOpen] = React.useState(false);
-  const [previewPort, setPreviewPort] = React.useState<number | null>(null);
 
 
   React.useEffect(() => {
@@ -1121,74 +1112,6 @@ function HomePageContent() {
     setPrompt('');
   };
 
-  const handleTerminalCommand = async (command: string) => {
-    // Add the command to the output as input
-    const commandId = Date.now().toString();
-    setTerminalOutput(prev => [
-      ...prev, 
-      {
-        id: `cmd-${commandId}`,
-        content: command,
-        type: 'input',
-        timestamp: new Date()
-      }
-    ]);
-
-    // Automatically open preview pane when a jekyll serve command is detected
-    if (command.includes('jekyll serve') || command.includes('bundle exec jekyll serve')) {
-      setIsPreviewOpen(true);
-    }
-
-    setIsProcessing(true);
-    
-    try {
-      // Get the current user's ID token for authentication
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        throw new Error('User not authenticated');
-      }
-      
-      const idToken = await currentUser.getIdToken();
-      
-      // Execute the command in the current workspace context
-      const result = await executeTerminalCommand(command, activeWorkspaceId || 'default', idToken);
-      
-      if (result.success && result.output) {
-        setTerminalOutput(prev => [
-          ...prev, 
-          {
-            id: `out-${Date.now()}`,
-            content: result.output,
-            type: 'output',
-            timestamp: new Date()
-          }
-        ]);
-      } else {
-        const errorMsg = result.error || 'Unknown error occurred';
-        setTerminalOutput(prev => [
-          ...prev, 
-          {
-            id: `err-${Date.now()}`,
-            content: `Error: ${errorMsg}`,
-            type: 'error',
-            timestamp: new Date()
-          }
-        ]);
-      }
-    } catch (error: any) {
-      setTerminalOutput(prev => [
-        ...prev, 
-        {
-          id: `err-${Date.now()}`,
-          content: `Error: ${error.message || 'Failed to execute command'}`,
-          type: 'error',
-          timestamp: new Date()
-        }
-      ]);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
 
   const folderToggle = React.useCallback((path: string) => {
     setExpandedFolders((prev) => {
@@ -1238,19 +1161,6 @@ function HomePageContent() {
     }
   }, [user, loading, router]);
 
-  // Handle keyboard shortcuts
-  React.useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Toggle terminal with Ctrl + `
-      if (e.ctrlKey && e.key === '`') {
-        e.preventDefault();
-        setIsTerminalOpen(prev => !prev);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, []);
   
   if (loading || loadingState === 'loading' || loadingState === 'idle') {
     return (
@@ -1414,34 +1324,6 @@ function HomePageContent() {
                       </DialogFooter>
                     </DialogContent>
                   </Dialog>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => setIsTerminalOpen(!isTerminalOpen)}
-                      >
-                        <span className="font-mono text-xs">&gt;_</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Terminal (Ctrl+`)</p>
-                    </TooltipContent>
-                  </Tooltip>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => setIsPreviewOpen(!isPreviewOpen)}
-                      >
-                        <span className="font-mono text-xs">👁️</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p>Preview</p>
-                    </TooltipContent>
-                  </Tooltip>
                 </TooltipProvider>
               </div>
             </div>
@@ -1454,34 +1336,7 @@ function HomePageContent() {
             />
           </section>
         </main>
-        {isPreviewOpen && (
-          <div className="fixed bottom-0 left-0 right-0 top-1/2 bg-white dark:bg-gray-900 z-40 border-t border-gray-200 dark:border-gray-700">
-            <PreviewPane
-              className="h-full w-full"
-              workspaceId={activeWorkspaceId || 'default'}
-              onPreviewStart={(port) => setPreviewPort(port)}
-              onPreviewStop={() => setPreviewPort(null)}
-            />
-          </div>
-        )}
-        <Terminal
-          isTerminalOpen={isTerminalOpen}
-          setIsTerminalOpen={setIsTerminalOpen}
-          isProcessing={isProcessing}
-          onCommandSubmit={handleTerminalCommand}
-          terminalOutput={terminalOutput}
-        />
-        {isPreviewOpen && (
-          <div className="fixed bottom-16 right-4 z-50">
-            <Button 
-              onClick={() => setIsPreviewOpen(false)}
-              variant="secondary"
-              size="sm"
-            >
-              Close Preview
-            </Button>
-          </div>
-        )}
+
         <AppFooter
           onPublish={() => setShowPublishConfirm(true)}
           isPublishing={isPublishing}
