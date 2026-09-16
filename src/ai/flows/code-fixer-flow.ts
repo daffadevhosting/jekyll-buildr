@@ -6,7 +6,7 @@
  * - CodeFixerOutput - The return type for the fixJekyllCode function.
  */
 
-import { ai } from '@/ai/genkit';
+import { generateText } from '@/lib/cloudflare-ai';
 import { z } from 'zod';
 import { checkCodeCompletionPermission } from '@/actions/user'; // Kita bisa pakai ulang izin Pro User
 
@@ -36,21 +36,18 @@ export async function fixJekyllCode(
   }
 }
 
-const codeFixerFlow = ai.defineFlow(
-  {
-    name: 'codeFixerFlow',
-    inputSchema: CodeFixerInputSchema,
-    outputSchema: CodeFixerOutputSchema,
-  },
-  async (input) => {
-    // Opsional: Batasi fitur ini hanya untuk proUser
+
+
+
+
+
+const codeFixerFlow = async (input: z.infer<typeof CodeFixerInputSchema>) => {
     const permission = await checkCodeCompletionPermission();
     if (!permission.success) {
       throw new Error(permission.error || 'Permission denied.');
     }
 
-    const { output } = await ai.generate({
-        prompt: `
+    const response = await generateText(`
 **Peran:**
 Anda adalah seorang Senior Web Developer dan ahli JavaScript, HTML, CSS, dan Liquid (Jekyll). Anda sangat teliti dan jago dalam melakukan code review untuk menemukan dan memperbaiki kesalahan.
 
@@ -71,14 +68,6 @@ Analisis kode dari file bernama \`${input.fileName}\` berikut ini. Temukan semua
 ---
 ${input.codeToFix}
 ---
-`,
-        output: {
-            schema: CodeFixerOutputSchema,
-        },
-        config: {
-            temperature: 0.1, // Kita ingin AI sangat presisi, bukan kreatif
-        }
-    });
-    return output!;
-  }
-);
+`, {model: 'coding', temperature: 0.1});
+    return CodeFixerOutputSchema.parse({fixedCode: response});
+};

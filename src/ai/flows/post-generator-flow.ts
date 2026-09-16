@@ -6,7 +6,7 @@
  * - PostContentOutput - The return type for the generatePostContent function.
  */
 
-import { ai } from '@/ai/genkit';
+import { generateText, parseJsonResponse } from '@/lib/cloudflare-ai';
 import { z } from 'zod';
 
 const PostContentOutputSchema = z.object({
@@ -25,15 +25,8 @@ export async function generatePostContent(
   return postGeneratorFlow({ title });
 }
 
-const postGeneratorFlow = ai.defineFlow(
-  {
-    name: 'postGeneratorFlow',
-    inputSchema: PostGeneratorInputSchema,
-    outputSchema: PostContentOutputSchema,
-  },
-  async (input) => {
-    const { output } = await ai.generate({
-        prompt: `You are an expert blog writer. Based on the following title, generate a set of relevant categories and a full blog post in Markdown format.
+const postGeneratorFlow = async (input: z.infer<typeof PostGeneratorInputSchema>) => {
+    const response = await generateText(`You are an expert blog writer. Based on the following title, generate a set of relevant categories and a full blog post in Markdown format.
 
 **Instructions:**
 1.  **Categories:** Provide a comma-separated string of 3-5 relevant categories.
@@ -42,10 +35,23 @@ const postGeneratorFlow = ai.defineFlow(
 **Post Title:**
 ${input.title}
 `,
-        output: {
-            schema: PostContentOutputSchema,
+      {
+        model: 'post',
+        temperature: 0.7,
+        maxTokens: 2048,
+        jsonSchema: {
+          name: 'post_content',
+          schema: {
+            type: 'object',
+            properties: {
+              categories: {type: 'string'},
+              content: {type: 'string'},
+            },
+            required: ['categories', 'content'],
+            additionalProperties: false,
+          },
         },
-    });
-    return output!;
-  }
-);
+      }
+    );
+    return PostContentOutputSchema.parse(parseJsonResponse(response));
+};

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
-// import { generateImage } from '@/actions/ai';
+import { generateImage } from '@/actions/ai';
 
 /**
  * API endpoint to generate an image.
@@ -34,15 +34,14 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'A prompt is required' }, { status: 400 });
     }
 
-    // 4. Call AI service (placeholder)
-    // const { filename, base64Data } = await generateImage(prompt);
-    
-    // Placeholder response: a 1x1 red pixel GIF
-    const filename = `${prompt.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')}.gif`;
-    const base64Data = 'data:image/gif;base64,R0lGODlhAQABAPAAAP8A/wAAACH5BAAAAAAALAAAAAABAAEAAAICRAEAOw==';
+    // 4. Generate the image with FLUX.
+    const result = await generateImage(prompt);
+    if (!result.success || !result.data) {
+      return NextResponse.json({ error: result.error || 'Image generation failed' }, { status: 502 });
+    }
 
     // 5. Return generated file info
-    return NextResponse.json({ filename, content: base64Data });
+    return NextResponse.json({ filename: result.data.filename, content: result.data.content });
 
   } catch (error: any) {
     console.error('Error in /api/ai/generateImage:', error);

@@ -64,7 +64,7 @@ ext install DaffaDev.jekyll-buildr
 - **Styling**: [Tailwind CSS](https://tailwindcss.com/)
 - **UI Components**: [ShadCN UI](https://ui.shadcn.com/)
 - **Authentication & Database**: [Firebase](https://firebase.google.com/) (Auth, Firestore)
-- **AI Features**: [Google AI & Genkit](https://firebase.google.com/docs/genkit)
+- **AI Features**: [Cloudflare Workers AI](https://developers.cloudflare.com/workers-ai/)
 - **Payments**: [PayPal](https://www.paypal.com/)
 - **Terminal**: [xterm.js](https://xtermjs.org/) for terminal emulation
 
@@ -75,6 +75,8 @@ ext install DaffaDev.jekyll-buildr
 2. **Connect GitHub**: Install the Jekyll Buildr GitHub App in your repositories
 3. **Select Project**: Choose your repository and branch to begin working
 4. **Start Developing**: Create, edit, and manage your Jekyll site
+
+For self-hosting, configure the Workers AI REST API on the server with `CLOUDFLARE_ACCOUNT_ID` and `CLOUDFLARE_API_TOKEN`. The token must have Workers AI Read and Edit permissions. Never expose either value to the browser.
 
 ### CLI Tool
 ```bash

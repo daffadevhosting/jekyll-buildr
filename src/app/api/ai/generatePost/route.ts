@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
-// Assume a specific AI function for generating post content exists
-// import { generatePostContent } from '@/actions/ai';
+import { generatePostContent } from '@/ai/flows/post-generator-flow';
 
 /**
  * API endpoint to generate Jekyll post content.
@@ -35,10 +34,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Title is required' }, { status: 400 });
     }
 
-    // 4. Call AI service (placeholder)
-    // In a real implementation, you would call your AI model here.
-    // const aiContent = await generatePostContent({ title, author, categories });
-    const aiContent = `This is AI-generated content for a blog post titled "${title}". It would discuss various interesting topics related to the title.`;
+    // 4. Generate post content with the post model.
+    const generatedPost = await generatePostContent(title);
 
     // 5. Format the post
     const date = new Date().toISOString().split('T')[0];
@@ -48,10 +45,10 @@ export async function POST(req: NextRequest) {
 layout: post
 title: "${title}"
 author: "${author || ''}"
-categories: [${categories || ''}]
+categories: [${categories || generatedPost.categories}]
 ---
 
-${aiContent}
+${generatedPost.content}
 `;
 
     return NextResponse.json({ filename, content: fileContent });

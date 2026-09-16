@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { adminAuth, adminDb } from '@/lib/firebase-admin';
-// import { generateComponentContent } from '@/actions/ai';
+import { generateJekyllComponent } from '@/ai/flows/jekyll-generator-flow';
 
 /**
  * API endpoint to generate Jekyll component code.
@@ -34,10 +34,8 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'A prompt is required' }, { status: 400 });
     }
 
-    // 4. Call AI service (placeholder)
-    // const { filename, content } = await generateComponentContent(prompt);
-    const filename = `${prompt.toLowerCase().replace(/\s+/g, '-').replace(/[^\w-]/g, '')}.html`;
-    const content = `<!-- AI-generated component for: "${prompt}" -->\n<div>\n  <p>This is a placeholder for your new component.</p>\n</div>`;
+    // 4. Generate the component with the coding model.
+    const { filename, content } = await generateJekyllComponent(prompt);
 
     // 5. Return generated file info
     return NextResponse.json({ filename, content });

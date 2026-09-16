@@ -6,7 +6,7 @@
  * - CodeCompletionOutput - The return type for the generateCodeCompletion function.
  */
 
-import { ai } from '@/ai/genkit';
+import { generateText } from '@/lib/cloudflare-ai';
 import { z } from 'zod';
 import { checkCodeCompletionPermission } from '@/actions/user';
 
@@ -32,39 +32,27 @@ export async function generateCodeCompletion(
   }
 }
 
-const codeCompletionFlow = ai.defineFlow(
-  {
-    name: 'codeCompletionFlow',
-    inputSchema: CodeCompletionInputSchema,
-    outputSchema: CodeCompletionOutputSchema,
-  },
-  async (input) => {
-    // Periksa izin pengguna AI
+
+const codeCompletionFlow = async (input: z.infer<typeof CodeCompletionInputSchema>) => {
     const permission = await checkCodeCompletionPermission();
     if (!permission.success) {
       console.warn(`User tried to use Code Completion without permission: ${permission.error}`);
-      // Kembalikan output kosong jika tidak diizinkan
-      return { completion: "" };
+      return { completion: '' };
     }
-    const { output } = await ai.generate({
-        prompt: `
-Anda adalah asisten pelengkap kode AI.
+
+    const response = await generateText(`
+Anda adalah seorang asisten pelengkap kode AI.
 Tugas Anda adalah melanjutkan penulisan kode berdasarkan konteks yang diberikan.
 Kembalikan HANYA kode tambahannya. Jangan ulangi konteks. Jangan gunakan Markdown.
 
 BAHASA: ${input.language}
 KODE:
 ${input.context}`,
-        output: {
-            schema: CodeCompletionOutputSchema,
-        },
-        // === PERBAIKAN DI SINI ===
-        config: {
-            temperature: 0.2,
-            // Hapus total 'stop' untuk debugging. Biarkan AI lebih bebas.
-            maxOutputTokens: 48, // Tingkatkan untuk kode yang lebih lengkap
-        }
-    });
-    return output!;
-  }
-);
+  {
+        model: 'coding',
+        temperature: 0.2,
+        maxTokens: 48,
+      }
+    );
+    return CodeCompletionOutputSchema.parse({completion: response});
+};

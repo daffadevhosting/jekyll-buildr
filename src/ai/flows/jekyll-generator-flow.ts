@@ -6,7 +6,7 @@
  * - JekyllComponentOutput - The return type for the generateJekyllComponent function.
  */
 
-import { ai } from '@/ai/genkit';
+import { generateText, parseJsonResponse } from '@/lib/cloudflare-ai';
 import { z } from 'zod';
 
 const JekyllComponentOutputSchema = z.object({
@@ -29,13 +29,7 @@ export async function generateJekyllComponent(
   return jekyllGeneratorFlow({ prompt: promptText, activeFilePath });
 }
 
-const jekyllGeneratorFlow = ai.defineFlow(
-  {
-    name: 'jekyllGeneratorFlow',
-    inputSchema: JekyllGeneratorInputSchema,
-    outputSchema: JekyllComponentOutputSchema,
-  },
-  async (input) => {
+const jekyllGeneratorFlow = async (input: z.infer<typeof JekyllGeneratorInputSchema>) => {
     
     // ======== PEMBARUAN LOGIKA PROMPT DIMULAI DI SINI ========
 
@@ -93,12 +87,24 @@ ${input.prompt}
 
     // ======== AKHIR PEMBARUAN LOGIKA PROMPT ========
 
-    const { output } = await ai.generate({
-        prompt: finalPrompt, // Menggunakan prompt yang sudah dibangun secara dinamis
-        output: {
-            schema: JekyllComponentOutputSchema,
+    const response = await generateText(finalPrompt, {
+      model: 'coding',
+      temperature: 0.3,
+      maxTokens: 4096,
+      jsonSchema: {
+        name: 'jekyll_component',
+        schema: {
+          type: 'object',
+          properties: {
+            filename: {type: 'string'},
+            content: {type: 'string'},
+          },
+          required: ['filename', 'content'],
+          additionalProperties: false,
         },
+      },
     });
+    const output = JekyllComponentOutputSchema.parse(parseJsonResponse(response));
 
     // Jika ini adalah permintaan kontekstual, pastikan nama file yang dikembalikan
     // sesuai dengan file yang sedang diedit untuk konsistensi.
@@ -107,5 +113,4 @@ ${input.prompt}
     }
     
     return output!;
-  }
-);
+};
