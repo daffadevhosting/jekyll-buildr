@@ -1,22 +1,41 @@
 const CLOUDFLARE_AI_URL = 'https://api.cloudflare.com/client/v4/accounts';
 
 export const CLOUDFLARE_AI_MODELS = {
+  // Qwen is strong for code; JSON mode not officially listed — we prompt for JSON instead
   coding: '@cf/qwen/qwen2.5-coder-32b-instruct',
-  image: '@cf/black-forest-labs/flux-2-dev',
+  // flux-2-dev is too slow and often times out on serverless (Vercel).
+  // klein-4b: fast distilled FLUX.2 (multipart, fixed 4 steps)
+  // schnell: fastest FLUX.1 (JSON body, 4 steps) — used as fallback
+  image: '@cf/black-forest-labs/flux-2-klein-4b',
+  imageFallback: '@cf/black-forest-labs/flux-1-schnell',
+  // Gemma is good for long-form writing; JSON mode not supported — prompt for JSON
   post: '@cf/google/gemma-4-26b-a4b-it',
 } as const;
 
 type CloudflareAiResponse<T> = {
   success?: boolean;
   result?: T;
-  errors?: Array<{message?: string}>;
+  errors?: Array<{message?: string; code?: number}>;
 };
 
-type TextResult = string | {response?: string};
+/** Possible shapes Workers AI returns for text models */
+type TextResult =
+  | string
+  | {
+      response?: unknown;
+      // OpenAI-compatible shape some models return
+      choices?: Array<{message?: {content?: string}; text?: string}>;
+      // reasoning models sometimes put output here
+      output_text?: string;
+      text?: string;
+    };
 
 function getCloudflareConfig() {
-  const accountId = process.env.CLOUDFLARE_ACCOUNT_ID;
-  const apiToken = process.env.CLOUDFLARE_API_TOKEN;
+  const env = (globalThis as typeof globalThis & {
+    process?: {env?: Record<string, string | undefined>};
+  }).process?.env;
+  const accountId = env?.CLOUDFLARE_ACCOUNT_ID;
+  const apiToken = env?.CLOUDFLARE_API_TOKEN;
 
   if (!accountId || !apiToken) {
     throw new Error(
@@ -38,7 +57,6 @@ async function runModel<T>(
   let response: Response;
 
   if (options?.multipart) {
-    // FLUX.2 models require multipart/form-data (not JSON)
     const form = new FormData();
     for (const [key, value] of Object.entries(input)) {
       if (value === undefined || value === null) continue;
@@ -49,7 +67,6 @@ async function runModel<T>(
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiToken}`,
-        // Do NOT set Content-Type — fetch will set multipart boundary automatically
       },
       body: form,
     });
@@ -73,61 +90,171 @@ async function runModel<T>(
   return payload.result;
 }
 
+/**
+ * Normalize caller's jsonSchema into the flat JSON Schema Cloudflare expects.
+ * Callers often pass OpenAI-style `{ name, schema }`; Cloudflare wants the schema body.
+ */
+function normalizeJsonSchema(
+  jsonSchema: Record<string, unknown>
+): Record<string, unknown> {
+  // OpenAI nested form: { name, schema: { type, properties, ... } }
+  if (
+    jsonSchema.schema &&
+    typeof jsonSchema.schema === 'object' &&
+    !Array.isArray(jsonSchema.schema)
+  ) {
+    return jsonSchema.schema as Record<string, unknown>;
+  }
+  return jsonSchema;
+}
+
+/** Pull plain text out of whatever shape Workers AI returned. */
+function extractText(result: TextResult): string | null {
+  if (typeof result === 'string') {
+    return result.trim() ? result : null;
+  }
+  if (!result || typeof result !== 'object') {
+    return null;
+  }
+
+  const {response, output_text, text, choices} = result;
+
+  if (typeof response === 'string' && response.trim()) {
+    return response;
+  }
+  // JSON mode: response is already a structured object
+  if (response !== undefined && response !== null && typeof response === 'object') {
+    return JSON.stringify(response);
+  }
+  if (typeof output_text === 'string' && output_text.trim()) {
+    return output_text;
+  }
+  if (typeof text === 'string' && text.trim()) {
+    return text;
+  }
+  if (Array.isArray(choices) && choices.length > 0) {
+    const first = choices[0];
+    const content = first?.message?.content ?? first?.text;
+    if (typeof content === 'string' && content.trim()) {
+      return content;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Models that officially support Workers AI JSON Mode (as of docs).
+ * Gemma / Qwen are NOT on this list — forcing response_format often yields empty responses.
+ */
+const JSON_MODE_MODELS = new Set([
+  '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+  '@cf/meta/llama-3-8b-instruct',
+  '@cf/meta/llama-3.1-8b-instruct',
+  '@hf/nousresearch/hermes-2-pro-mistral-7b',
+  '@hf/thebloke/deepseek-coder-6.7b-instruct-awq',
+  '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
+]);
+
 export async function generateText(
   prompt: string,
   options: {
-    model: keyof typeof CLOUDFLARE_AI_MODELS;
+    model: 'coding' | 'post';
     temperature?: number;
     maxTokens?: number;
     jsonSchema?: Record<string, unknown>;
   }
 ): Promise<string> {
-  const result = await runModel<TextResult>(CLOUDFLARE_AI_MODELS[options.model], {
-    prompt,
-    temperature: options.temperature,
-    max_tokens: options.maxTokens,
-    ...(options.jsonSchema
-      ? {
-          response_format: {
-            type: 'json_schema',
-            json_schema: options.jsonSchema,
-          },
-        }
-      : {}),
-  });
+  const modelId = CLOUDFLARE_AI_MODELS[options.model];
+  const wantsJson = Boolean(options.jsonSchema);
+  const supportsJsonMode = JSON_MODE_MODELS.has(modelId);
 
-  if (typeof result === 'string') return result;
-  if (result.response) {
-    // JSON mode may return an object under .response — stringify so parseJsonResponse works
-    return typeof result.response === 'string'
-      ? result.response
-      : JSON.stringify(result.response);
+  // Prefer messages (chat template) — works better across models than raw prompt
+  const messages = [
+    {
+      role: 'user' as const,
+      content: wantsJson
+        ? `${prompt}
+
+Respond with valid JSON only. No markdown fences, no explanation.`
+        : prompt,
+    },
+  ];
+
+  const input: Record<string, unknown> = {
+    messages,
+    temperature: options.temperature ?? 0.7,
+    max_tokens: options.maxTokens ?? 2048,
+  };
+
+  // Only attach response_format when the model actually supports JSON Mode
+  if (wantsJson && supportsJsonMode && options.jsonSchema) {
+    input.response_format = {
+      type: 'json_schema',
+      json_schema: normalizeJsonSchema(options.jsonSchema),
+    };
   }
-  throw new Error('Workers AI returned an empty text response.');
+
+  const result = await runModel<TextResult>(modelId, input);
+  const text = extractText(result);
+
+  if (!text) {
+    console.error(
+      'Workers AI empty text response. Raw result:',
+      JSON.stringify(result).slice(0, 500)
+    );
+    throw new Error('Workers AI returned an empty text response.');
+  }
+
+  return text;
 }
 
+function normalizeImageDataUri(image: string): string {
+  if (image.startsWith('data:')) return image;
+  // flux-1-schnell often returns JPEG; flux-2 returns PNG-ish base64
+  return `data:image/png;base64,${image}`;
+}
+
+/**
+ * Generate an image via Workers AI.
+ * Primary: flux-2-klein-4b (fast, multipart, fixed 4 steps).
+ * Fallback: flux-1-schnell (JSON, very fast) if primary times out or fails.
+ */
 export async function generateImage(prompt: string): Promise<string> {
-  // FLUX.2 [dev] requires multipart/form-data. Sending JSON will fail.
-  const result = await runModel<{image?: string}>(
-    CLOUDFLARE_AI_MODELS.image,
-    {
-      prompt,
-      width: 1024,
-      height: 1024,
-      steps: 25,
-    },
-    {multipart: true}
-  );
+  // Blog cover size — 768 keeps quality decent and stays under serverless timeouts
+  const width = 768;
+  const height = 768;
 
-  if (!result.image) {
+  try {
+    // flux-2-klein-* requires multipart even for prompt-only
+    const result = await runModel<{image?: string}>(
+      CLOUDFLARE_AI_MODELS.image,
+      {prompt, width, height},
+      {multipart: true}
+    );
+
+    if (result.image) {
+      return normalizeImageDataUri(result.image);
+    }
     throw new Error('Workers AI returned no image.');
-  }
+  } catch (primaryError: unknown) {
+    const msg = primaryError instanceof Error ? primaryError.message : String(primaryError);
+    console.warn(`Primary image model failed (${msg}). Trying flux-1-schnell…`);
 
-  // API returns raw base64; normalize to data URI so callers can use it directly
-  if (result.image.startsWith('data:')) {
-    return result.image;
+    // flux-1-schnell uses plain JSON (not multipart)
+    const fallback = await runModel<{image?: string}>(CLOUDFLARE_AI_MODELS.imageFallback, {
+      prompt,
+      steps: 4,
+    });
+
+    if (!fallback.image) {
+      throw new Error(
+        `Image generation failed. Primary: ${msg}. Fallback returned no image.`
+      );
+    }
+
+    return normalizeImageDataUri(fallback.image);
   }
-  return `data:image/png;base64,${result.image}`;
 }
 
 export function parseJsonResponse<T>(response: string): T {
@@ -137,5 +264,17 @@ export function parseJsonResponse<T>(response: string): T {
     .replace(/\s*```$/i, '')
     .trim();
 
-  return JSON.parse(withoutMarkdown) as T;
+  // Some models wrap JSON in prose — try to extract the first {...} block
+  try {
+    return JSON.parse(withoutMarkdown) as T;
+  } catch {
+    const start = withoutMarkdown.indexOf('{');
+    const end = withoutMarkdown.lastIndexOf('}');
+    if (start !== -1 && end > start) {
+      return JSON.parse(withoutMarkdown.slice(start, end + 1)) as T;
+    }
+    throw new Error(
+      `Failed to parse AI JSON response: ${withoutMarkdown.slice(0, 200)}`
+    );
+  }
 }

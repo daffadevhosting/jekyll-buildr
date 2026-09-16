@@ -26,19 +26,23 @@ export async function generatePostContent(
 }
 
 const postGeneratorFlow = async (input: z.infer<typeof PostGeneratorInputSchema>) => {
-    const response = await generateText(`You are an expert blog writer. Based on the following title, generate a set of relevant categories and a full blog post in Markdown format.
+    const response = await generateText(
+      `You are an expert blog writer.
 
-**Instructions:**
-1.  **Categories:** Provide a comma-separated string of 3-5 relevant categories.
-2.  **Content:** Write a high-quality, engaging blog post. Use Markdown for formatting (e.g., # for headings, * for lists, etc.). The content should be at least 300 words.
+Based on the post title below, produce:
+1. categories — a comma-separated string of 3-5 relevant categories (lowercase)
+2. content — a full blog post in Markdown (at least 300 words), with headings, paragraphs, and lists where useful
 
-**Post Title:**
-${input.title}
-`,
+Post title: ${input.title}
+
+Return a single JSON object with exactly these keys:
+{"categories":"...","content":"..."}`,
       {
         model: 'post',
         temperature: 0.7,
         maxTokens: 2048,
+        // Schema is used by generateText only when the model supports JSON Mode.
+        // Gemma does not — the prompt above already asks for JSON.
         jsonSchema: {
           name: 'post_content',
           schema: {
