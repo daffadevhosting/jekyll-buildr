@@ -27,19 +27,42 @@ function getCloudflareConfig() {
   return {accountId, apiToken};
 }
 
-async function runModel<T>(model: string, input: Record<string, unknown>): Promise<T> {
+async function runModel<T>(
+  model: string,
+  input: Record<string, unknown>,
+  options?: {multipart?: boolean}
+): Promise<T> {
   const {accountId, apiToken} = getCloudflareConfig();
-  const response = await fetch(
-    `${CLOUDFLARE_AI_URL}/${accountId}/ai/run/${encodeURI(model)}`,
-    {
+  const url = `${CLOUDFLARE_AI_URL}/${accountId}/ai/run/${encodeURI(model)}`;
+
+  let response: Response;
+
+  if (options?.multipart) {
+    // FLUX.2 models require multipart/form-data (not JSON)
+    const form = new FormData();
+    for (const [key, value] of Object.entries(input)) {
+      if (value === undefined || value === null) continue;
+      form.append(key, String(value));
+    }
+
+    response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${apiToken}`,
+        // Do NOT set Content-Type — fetch will set multipart boundary automatically
+      },
+      body: form,
+    });
+  } else {
+    response = await fetch(url, {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiToken}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(input),
-    }
-  );
+    });
+  }
 
   const payload = (await response.json()) as CloudflareAiResponse<T>;
   if (!response.ok || payload.success === false || payload.result === undefined) {
@@ -74,22 +97,37 @@ export async function generateText(
   });
 
   if (typeof result === 'string') return result;
-  if (result.response) return result.response;
+  if (result.response) {
+    // JSON mode may return an object under .response — stringify so parseJsonResponse works
+    return typeof result.response === 'string'
+      ? result.response
+      : JSON.stringify(result.response);
+  }
   throw new Error('Workers AI returned an empty text response.');
 }
 
 export async function generateImage(prompt: string): Promise<string> {
-  const result = await runModel<{image?: string}>(CLOUDFLARE_AI_MODELS.image, {
-    prompt,
-    width: 1024,
-    height: 1024,
-  });
+  // FLUX.2 [dev] requires multipart/form-data. Sending JSON will fail.
+  const result = await runModel<{image?: string}>(
+    CLOUDFLARE_AI_MODELS.image,
+    {
+      prompt,
+      width: 1024,
+      height: 1024,
+      steps: 25,
+    },
+    {multipart: true}
+  );
 
   if (!result.image) {
     throw new Error('Workers AI returned no image.');
   }
 
-  return result.image;
+  // API returns raw base64; normalize to data URI so callers can use it directly
+  if (result.image.startsWith('data:')) {
+    return result.image;
+  }
+  return `data:image/png;base64,${result.image}`;
 }
 
 export function parseJsonResponse<T>(response: string): T {
