@@ -1,15 +1,14 @@
 const CLOUDFLARE_AI_URL = 'https://api.cloudflare.com/client/v4/accounts';
 
 export const CLOUDFLARE_AI_MODELS = {
-  // Qwen is strong for code; JSON mode not officially listed — we prompt for JSON instead
+  // Qwen is strong for code
   coding: '@cf/qwen/qwen2.5-coder-32b-instruct',
-  // flux-2-dev is too slow and often times out on serverless (Vercel).
   // klein-4b: fast distilled FLUX.2 (multipart, fixed 4 steps)
-  // schnell: fastest FLUX.1 (JSON body, 4 steps) — used as fallback
+  // schnell: fastest FLUX.1 (JSON body) — fallback
   image: '@cf/black-forest-labs/flux-2-klein-4b',
   imageFallback: '@cf/black-forest-labs/flux-1-schnell',
-  // Gemma is good for long-form writing; JSON mode not supported — prompt for JSON
-  post: '@cf/google/gemma-4-26b-a4b-it',
+  // Llama 3.3 70B FP8-fast: supports JSON Mode, no reasoning-only trap like Gemma 4
+  post: '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
 } as const;
 
 type CloudflareAiResponse<T> = {
@@ -18,12 +17,17 @@ type CloudflareAiResponse<T> = {
   errors?: Array<{message?: string; code?: number}>;
 };
 
-/** Possible shapes Workers AI returns for text models */
+type ChoiceMessage = {
+  content?: string;
+  reasoning_content?: string;
+  text?: string;
+};
+
 type TextResult =
   | string
   | {
       response?: unknown;
-      choices?: Array<{message?: {content?: string}; text?: string}>;
+      choices?: Array<{message?: ChoiceMessage; text?: string; finish_reason?: string}>;
       output_text?: string;
       text?: string;
     };
@@ -37,7 +41,7 @@ function getCloudflareConfig() {
 
   if (!accountId || !apiToken) {
     throw new Error(
-      'Workers AI is not configured. Set CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN.'
+      'Workers AI is not configured.'
     );
   }
 
@@ -88,10 +92,6 @@ async function runModel<T>(
   return payload.result;
 }
 
-/**
- * Normalize caller's jsonSchema into the flat JSON Schema Cloudflare expects.
- * Callers often pass OpenAI-style `{ name, schema }`; Cloudflare wants the schema body.
- */
 function normalizeJsonSchema(
   jsonSchema: Record<string, unknown>
 ): Record<string, unknown> {
@@ -130,26 +130,30 @@ function extractText(result: TextResult): string | null {
   }
   if (Array.isArray(choices) && choices.length > 0) {
     const first = choices[0];
-    const content = first?.message?.content ?? first?.text;
-    if (typeof content === 'string' && content.trim()) {
-      return content;
-    }
+    const msg = first?.message;
+    // Prefer final content; fall back to reasoning_content (Gemma/reasoning models)
+    const content =
+      (typeof msg?.content === 'string' && msg.content.trim() ? msg.content : null) ??
+      (typeof msg?.reasoning_content === 'string' && msg.reasoning_content.trim()
+        ? msg.reasoning_content
+        : null) ??
+      (typeof msg?.text === 'string' && msg.text.trim() ? msg.text : null) ??
+      (typeof first?.text === 'string' && first.text.trim() ? first.text : null);
+
+    if (content) return content;
   }
 
   return null;
 }
 
 /**
- * Models that officially support Workers AI JSON Mode (as of docs).
- * Gemma / Qwen are NOT on this list — forcing response_format often yields empty responses.
+ * Models that officially support Workers AI JSON Mode.
+ * Llama 3.3 is on this list — use response_format for reliable structured output.
  */
 const JSON_MODE_MODELS = new Set([
   '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-  '@cf/meta/llama-3-8b-instruct',
-  '@cf/meta/llama-3.1-8b-instruct',
-  '@hf/nousresearch/hermes-2-pro-mistral-7b',
-  '@hf/thebloke/deepseek-coder-6.7b-instruct-awq',
-  '@cf/deepseek-ai/deepseek-r1-distill-qwen-32b',
+  '@cf/meta/llama-3.2-1b-instruct',
+  '@cf/meta/llama-3.1-8b-instruct-fp8',
 ]);
 
 export async function generateText(
@@ -172,7 +176,7 @@ export async function generateText(
         ? `${prompt}
 
 Respond with valid JSON only. No markdown fences, no explanation.
-Important: escape all newlines inside string values as \\n (do not put real line breaks inside JSON strings).`
+Escape newlines inside string values as \\n.`
         : prompt,
     },
   ];
@@ -196,7 +200,7 @@ Important: escape all newlines inside string values as \\n (do not put real line
   if (!text) {
     console.error(
       'Workers AI empty text response. Raw result:',
-      JSON.stringify(result).slice(0, 500)
+      JSON.stringify(result).slice(0, 800)
     );
     throw new Error('Workers AI returned an empty text response.');
   }
@@ -211,8 +215,7 @@ function normalizeImageDataUri(image: string): string {
 
 /**
  * Generate an image via Workers AI.
- * Primary: flux-2-klein-4b (fast, multipart, fixed 4 steps).
- * Fallback: flux-1-schnell (JSON, very fast) if primary times out or fails.
+ * Primary: flux-2-klein-4b. Fallback: flux-1-schnell.
  */
 export async function generateImage(prompt: string): Promise<string> {
   const width = 768;
@@ -276,7 +279,6 @@ function repairJsonStringLiterals(raw: string): string {
         inString = false;
         continue;
       }
-      // Escape raw control characters that break JSON.parse
       if (ch === '\n') {
         out += '\\n';
         continue;
