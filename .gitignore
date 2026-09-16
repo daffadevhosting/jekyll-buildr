@@ -27,6 +27,7 @@ pnpm-lock.yaml
 # misc
 .DS_Store
 *.pem
+.tsupgrader
 
 # debug
 npm-debug.log*
@@ -47,3 +48,5 @@ next-env.d.ts
 # firebase
 firebase-debug.log
 firestore-debug.log
+AGENTS.md
+CLAUDE.md

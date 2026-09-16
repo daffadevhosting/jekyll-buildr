@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --turbopack -p 8800",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"
@@ -46,7 +46,7 @@
     "ignore": "^7.0.5",
     "jsonwebtoken": "^9.0.2",
     "lucide-react": "^0.475.0",
-    "next": "15.3.3",
+    "next": "16.3.5",
     "next-pwa": "^5.6.0",
     "patch-package": "^8.0.0",
     "prismjs": "^1.29.0",
