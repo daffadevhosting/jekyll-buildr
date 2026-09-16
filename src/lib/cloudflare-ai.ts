@@ -23,9 +23,7 @@ type TextResult =
   | string
   | {
       response?: unknown;
-      // OpenAI-compatible shape some models return
       choices?: Array<{message?: {content?: string}; text?: string}>;
-      // reasoning models sometimes put output here
       output_text?: string;
       text?: string;
     };
@@ -97,7 +95,6 @@ async function runModel<T>(
 function normalizeJsonSchema(
   jsonSchema: Record<string, unknown>
 ): Record<string, unknown> {
-  // OpenAI nested form: { name, schema: { type, properties, ... } }
   if (
     jsonSchema.schema &&
     typeof jsonSchema.schema === 'object' &&
@@ -122,7 +119,6 @@ function extractText(result: TextResult): string | null {
   if (typeof response === 'string' && response.trim()) {
     return response;
   }
-  // JSON mode: response is already a structured object
   if (response !== undefined && response !== null && typeof response === 'object') {
     return JSON.stringify(response);
   }
@@ -169,14 +165,14 @@ export async function generateText(
   const wantsJson = Boolean(options.jsonSchema);
   const supportsJsonMode = JSON_MODE_MODELS.has(modelId);
 
-  // Prefer messages (chat template) — works better across models than raw prompt
   const messages = [
     {
       role: 'user' as const,
       content: wantsJson
         ? `${prompt}
 
-Respond with valid JSON only. No markdown fences, no explanation.`
+Respond with valid JSON only. No markdown fences, no explanation.
+Important: escape all newlines inside string values as \\n (do not put real line breaks inside JSON strings).`
         : prompt,
     },
   ];
@@ -187,7 +183,6 @@ Respond with valid JSON only. No markdown fences, no explanation.`
     max_tokens: options.maxTokens ?? 2048,
   };
 
-  // Only attach response_format when the model actually supports JSON Mode
   if (wantsJson && supportsJsonMode && options.jsonSchema) {
     input.response_format = {
       type: 'json_schema',
@@ -211,7 +206,6 @@ Respond with valid JSON only. No markdown fences, no explanation.`
 
 function normalizeImageDataUri(image: string): string {
   if (image.startsWith('data:')) return image;
-  // flux-1-schnell often returns JPEG; flux-2 returns PNG-ish base64
   return `data:image/png;base64,${image}`;
 }
 
@@ -221,12 +215,10 @@ function normalizeImageDataUri(image: string): string {
  * Fallback: flux-1-schnell (JSON, very fast) if primary times out or fails.
  */
 export async function generateImage(prompt: string): Promise<string> {
-  // Blog cover size — 768 keeps quality decent and stays under serverless timeouts
   const width = 768;
   const height = 768;
 
   try {
-    // flux-2-klein-* requires multipart even for prompt-only
     const result = await runModel<{image?: string}>(
       CLOUDFLARE_AI_MODELS.image,
       {prompt, width, height},
@@ -241,7 +233,6 @@ export async function generateImage(prompt: string): Promise<string> {
     const msg = primaryError instanceof Error ? primaryError.message : String(primaryError);
     console.warn(`Primary image model failed (${msg}). Trying flux-1-schnell…`);
 
-    // flux-1-schnell uses plain JSON (not multipart)
     const fallback = await runModel<{image?: string}>(CLOUDFLARE_AI_MODELS.imageFallback, {
       prompt,
       steps: 4,
@@ -257,6 +248,64 @@ export async function generateImage(prompt: string): Promise<string> {
   }
 }
 
+/**
+ * Escape literal control characters inside JSON string values.
+ * LLMs often emit real newlines inside "content": "..." which is invalid JSON.
+ */
+function repairJsonStringLiterals(raw: string): string {
+  let out = '';
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+
+    if (inString) {
+      if (escaped) {
+        out += ch;
+        escaped = false;
+        continue;
+      }
+      if (ch === '\\') {
+        out += ch;
+        escaped = true;
+        continue;
+      }
+      if (ch === '"') {
+        out += ch;
+        inString = false;
+        continue;
+      }
+      // Escape raw control characters that break JSON.parse
+      if (ch === '\n') {
+        out += '\\n';
+        continue;
+      }
+      if (ch === '\r') {
+        out += '\\r';
+        continue;
+      }
+      if (ch === '\t') {
+        out += '\\t';
+        continue;
+      }
+      if (ch.charCodeAt(0) < 0x20) {
+        out += `\\u${ch.charCodeAt(0).toString(16).padStart(4, '0')}`;
+        continue;
+      }
+      out += ch;
+      continue;
+    }
+
+    if (ch === '"') {
+      inString = true;
+    }
+    out += ch;
+  }
+
+  return out;
+}
+
 export function parseJsonResponse<T>(response: string): T {
   const withoutMarkdown = response
     .trim()
@@ -264,17 +313,26 @@ export function parseJsonResponse<T>(response: string): T {
     .replace(/\s*```$/i, '')
     .trim();
 
-  // Some models wrap JSON in prose — try to extract the first {...} block
-  try {
-    return JSON.parse(withoutMarkdown) as T;
-  } catch {
-    const start = withoutMarkdown.indexOf('{');
-    const end = withoutMarkdown.lastIndexOf('}');
-    if (start !== -1 && end > start) {
-      return JSON.parse(withoutMarkdown.slice(start, end + 1)) as T;
-    }
-    throw new Error(
-      `Failed to parse AI JSON response: ${withoutMarkdown.slice(0, 200)}`
-    );
+  const candidates: string[] = [withoutMarkdown];
+  const start = withoutMarkdown.indexOf('{');
+  const end = withoutMarkdown.lastIndexOf('}');
+  if (start !== -1 && end > start) {
+    candidates.push(withoutMarkdown.slice(start, end + 1));
   }
+
+  let lastError: unknown;
+  for (const candidate of candidates) {
+    for (const variant of [candidate, repairJsonStringLiterals(candidate)]) {
+      try {
+        return JSON.parse(variant) as T;
+      } catch (err) {
+        lastError = err;
+      }
+    }
+  }
+
+  throw new Error(
+    `Failed to parse AI JSON response: ${withoutMarkdown.slice(0, 200)}` +
+      (lastError instanceof Error ? ` (${lastError.message})` : '')
+  );
 }
